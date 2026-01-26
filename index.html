@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audiobook Player</title>
+    <link rel="stylesheet" href="css/style.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jsmediatags/3.9.5/jsmediatags.min.js"></script>
+</head>
+<body>
+    <div class = "player-container">
+        <div class = "upload-section">
+            <input type = "file" id = "audio-upload" accept = "audio/*">
+        </div>
+
+        <div class = "metadata-section">
+            <h2 id = "Chapter-Title">Select an Audiobook...</h2>
+            <p id = "Author-Name">--</p>
+        </div>
+        <audio id = "main-audio"></audio>
+        <div class="progress-section">
+            <input type="range" id="seek-bar" value="0" min="0" step="1">
+            <div class="time-labels">
+                <span id = "current-time">0:00</span>
+                <span id = "duration">0:00</span>
+            </div>
+        </div>
+        <div class = "controls-section">
+            <button id = "rewind-btn">⏪ 15s</button>
+            <button id = "play-pause-btn"> ▶️ </button>
+            <button id = "forward-btn"> 15s ⏩</button>
+        </div>
+    </div>
+
+    <script src="js/app.js"></script>
+</body>
+</html>
