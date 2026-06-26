@@ -68,6 +68,7 @@ function ttsProxyPlugin() {
 
 export default defineConfig({
   root: '.',
+  base: '/Audiobook-player/',
   build: {
     outDir: 'dist',
   },
