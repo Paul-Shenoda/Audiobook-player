@@ -6,6 +6,7 @@ import { importBooks } from '../services/import-service.js';
 import { clearBookCache } from '../tts/chunk-cache.js';
 import { showToast } from '../utils/toast.js';
 import { icon } from '../utils/icons.js';
+import { escapeHtml } from '../utils/escape-html.js';
 import {
   renderCoverMarkup,
   hydrateCoverUrls,
@@ -314,8 +315,4 @@ function isIOS() {
     (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 }
 
-function escapeHtml(text) {
-  const div = document.createElement('div');
-  div.textContent = text;
-  return div.innerHTML;
-}
+

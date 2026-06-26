@@ -15,6 +15,7 @@ import { playbackManager } from '../services/playback-manager.js';
 import { icon } from '../utils/icons.js';
 import { renderCoverMarkup } from '../utils/cover-art.js';
 import { showToast } from '../utils/toast.js';
+import { getErrorMessage } from '../utils/error-message.js';
 
 /**
  * @typedef {import('../storage/library-db.js').Book} Book
@@ -85,7 +86,7 @@ export async function renderEpubListen(container, book, { onBack, onOpenSettings
 
     await loadAndPrepareChapter();
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+    const msg = getErrorMessage(err);
     statusText.textContent = `Failed to open EPUB: ${msg}`;
     statusText.classList.add('error');
     showToast(`Failed to open EPUB: ${msg}`, 'error');
@@ -165,7 +166,7 @@ export async function renderEpubListen(container, book, { onBack, onOpenSettings
         saved && saved.chapterIndex === chapterIndex ? saved.chunkIndex : 0;
       updateProgressDisplay(startChunk);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = getErrorMessage(err);
       statusText.textContent = `Chapter load error: ${msg}`;
       statusText.classList.add('error');
     }

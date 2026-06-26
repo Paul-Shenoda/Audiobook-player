@@ -6,6 +6,7 @@ import {
   destroyEpub,
 } from '../epub/epub-loader.js';
 import { generateFallbackCover } from '../utils/cover-fallback.js';
+import { getErrorMessage } from '../utils/error-message.js';
 
 /**
  * @typedef {import('../storage/library-db.js').Book} Book
@@ -80,7 +81,7 @@ export async function importBooks(files, onProgress) {
       } else {
         result.failed.push({
           name: file.name,
-          error: err instanceof Error ? err.message : String(err),
+          error: getErrorMessage(err),
         });
       }
     }

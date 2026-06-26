@@ -1,5 +1,6 @@
 import { loadTTSSettings, saveTTSSettings, defaultSettings, TTSRouter } from '../tts/tts-router.js';
 import { icon } from '../utils/icons.js';
+import { escapeHtml, escapeAttr } from '../utils/escape-html.js';
 
 /**
  * @param {HTMLElement} container
@@ -120,12 +121,4 @@ export async function renderSettings(container, { onBack }) {
   await populateVoices();
 }
 
-function escapeHtml(text) {
-  const div = document.createElement('div');
-  div.textContent = text;
-  return div.innerHTML;
-}
 
-function escapeAttr(text) {
-  return text.replace(/"/g, '&quot;');
-}
