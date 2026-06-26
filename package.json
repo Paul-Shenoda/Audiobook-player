@@ -1,0 +1,19 @@
+{
+  "name": "audiobook-player",
+  "version": "1.0.0",
+  "description": "A lightweight, client-side web application that plays local MP3 files directly in the browser. Designed for mobile usage, it parses ID3 tags to display chapter metadata and persists no data to external servers.",
+  "main": "index.js",
+  "scripts": {
+    "test": "jest",
+    "test:coverage": "jest --coverage"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@babel/preset-env": "^7.29.7",
+    "babel-jest": "^30.4.1",
+    "jest": "^30.4.2",
+    "jest-environment-jsdom": "^30.4.1"
+  }
+}
