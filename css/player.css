@@ -1,0 +1,163 @@
+.player-view {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.player-container {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 24px 20px 40px;
+    max-width: 440px;
+    margin: 0 auto;
+    width: 100%;
+}
+
+.player-cover-wrap {
+    margin-bottom: 24px;
+}
+
+.player-cover {
+    width: 220px;
+    height: 220px;
+    object-fit: cover;
+    border-radius: 12px;
+    box-shadow: var(--shadow);
+    display: block;
+}
+
+.player-title {
+    font-size: 1.5rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 1.25;
+}
+
+.player-author {
+    color: var(--text-secondary);
+    font-size: 1rem;
+    margin-top: 6px;
+}
+
+.metadata-section {
+    text-align: center;
+    width: 100%;
+    margin-bottom: 8px;
+}
+
+.chapter-label {
+    text-align: center;
+    color: var(--text-secondary);
+    font-size: 0.95rem;
+    font-weight: 500;
+    margin: 16px 0 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.progress-section {
+    width: 100%;
+    margin: 24px 0;
+}
+
+.time-labels {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    margin-top: 6px;
+}
+
+.controls-section {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    margin-top: 8px;
+}
+
+.skip-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    padding: 8px 12px;
+    background-color: var(--surface-color);
+    border-radius: 12px;
+    min-width: 56px;
+    min-height: 56px;
+}
+
+.chapter-btn {
+    padding: 12px;
+    background-color: var(--surface-color);
+    border-radius: 50%;
+    min-width: 48px;
+    min-height: 48px;
+}
+
+.play-btn {
+    min-width: 80px;
+    min-height: 72px;
+    padding: 0 24px;
+    background-color: var(--primary-color);
+    color: #111;
+    border-radius: 999px;
+    font-size: 1rem;
+    font-weight: 600;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    box-shadow: 0 4px 15px rgba(246, 153, 60, 0.35);
+}
+
+.listen-btn span {
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.epub-progress-section {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 16px 0 24px;
+}
+
+.progress-percent {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    min-width: 36px;
+    font-weight: 500;
+}
+
+.stop-btn {
+    margin-top: 20px;
+    padding: 12px 28px;
+    background: var(--surface-color);
+    border-radius: 999px;
+    font-size: 0.9rem;
+    min-height: 44px;
+}
+
+.stop-btn:hover {
+    background: var(--border-color);
+}
+
+.epub-listen-view .player-container {
+    justify-content: flex-start;
+    padding-top: 16px;
+}
+
+.back-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
