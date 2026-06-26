@@ -18,8 +18,8 @@ export function loadTTSSettings() {
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
     if (raw) return { ...defaultSettings(), ...JSON.parse(raw) };
-  } catch {
-    // ignore
+  } catch (err) {
+    console.warn('[TTS] Could not parse saved settings:', err);
   }
   return defaultSettings();
 }
@@ -39,7 +39,11 @@ export function defaultSettings() {
  * @param {TTSSettings} settings
  */
 export function saveTTSSettings(settings) {
-  localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+  try {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+  } catch (err) {
+    console.error('[TTS] Could not save settings:', err);
+  }
 }
 
 /**
@@ -209,7 +213,11 @@ export class TTSRouter {
   resume() {
     this.paused = false;
     if (this.settings.providerId === 'openai' && this.aiProvider) {
-      this.audio?.play().catch(() => {});
+      this.audio?.play().catch((err) => {
+        console.error('[TTS] Resume playback failed:', err.message);
+        this.playing = false;
+        this.onError?.(new Error('Resume failed'));
+      });
     } else {
       this.webSpeech.resume();
     }

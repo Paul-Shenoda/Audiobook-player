@@ -103,7 +103,8 @@ async function importMp3(file) {
         author = tag.tags.artist || author;
         resolve();
       },
-      onError() {
+      onError(error) {
+        console.warn('[Import] Could not read ID3 tags for', file.name, error.type, error.info);
         resolve();
       },
     });

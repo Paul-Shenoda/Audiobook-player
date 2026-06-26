@@ -15,7 +15,8 @@ export function loadEpubProgress(bookId) {
   try {
     const raw = localStorage.getItem(`${STORAGE_PREFIX}${bookId}`);
     return raw ? JSON.parse(raw) : null;
-  } catch {
+  } catch (err) {
+    console.warn('[Playback] Could not parse saved progress for', bookId, err);
     return null;
   }
 }
@@ -25,7 +26,11 @@ export function loadEpubProgress(bookId) {
  * @param {EpubProgress} progress
  */
 export function saveEpubProgress(bookId, progress) {
-  localStorage.setItem(`${STORAGE_PREFIX}${bookId}`, JSON.stringify(progress));
+  try {
+    localStorage.setItem(`${STORAGE_PREFIX}${bookId}`, JSON.stringify(progress));
+  } catch (err) {
+    console.error('[Playback] Could not save progress for', bookId, err);
+  }
 }
 
 /**
