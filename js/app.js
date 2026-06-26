@@ -4,18 +4,36 @@ const playBtn = document.getElementById('play-pause-btn');
 const chapterTitle = document.getElementById('Chapter-Title');
 const authorName = document.getElementById('Author-Name');
 
+// Track the current object URL so we can revoke it when a new file is loaded
+let currentObjectURL = null;
+
 fileInput.addEventListener('change', function(event){
     //1. Get the selected file
     const file = event.target.files[0];
         //Safety check
     if(!file) return;
-    //2. Create a URL for the file
+
+    //1.5 Validate file type before processing
+    if(!file.type.startsWith('audio/')) {
+        chapterTitle.innerText = "Error: Please select an audio file.";
+        authorName.innerText = "--";
+        return;
+    }
+
+    //2. Revoke the previous object URL to prevent memory leaks
+    if(currentObjectURL) {
+        URL.revokeObjectURL(currentObjectURL);
+    }
+
+    //3. Create a URL for the file
     const fileURL = URL.createObjectURL(file);
-    //3. Set the audio player's source to the file URL
+    currentObjectURL = fileURL;
+
+    //4. Set the audio player's source to the file URL
     player.src = fileURL;
-    //4 Update the text (Temprorary)
+    //5 Update the text (Temporary)
     chapterTitle.innerText = "Loading Chapter...";
-    //5. Read the ID3 tags
+    //6. Read the ID3 tags
     jsmediatags.read(file, {
         onSuccess: function(tag) {
             chapterTitle.innerText = tag.tags.title || file.name;
@@ -26,7 +44,7 @@ fileInput.addEventListener('change', function(event){
         }
     });
 
-    //6. Play the audio
+    //7. Reset play button
     playBtn.innerText = "▶";
 });
 
