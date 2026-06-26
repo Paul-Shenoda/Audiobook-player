@@ -37,11 +37,11 @@ export async function renderSettings(container, { onBack }) {
           <label>
             OpenAI API Key
             <input type="password" id="api-key" placeholder="sk-..." autocomplete="off">
-            <small>Stored locally in your browser. Use a local proxy in production.</small>
+            <small>Key is stored in localStorage. Never use a real key on a shared device.</small>
           </label>
           <label>
             Proxy URL
-            <input type="text" id="proxy-url" value="${settings.proxyUrl}">
+            <input type="text" id="proxy-url" value="${escapeAttr(settings.proxyUrl)}">
           </label>
         </div>
         <button type="submit" class="primary-btn">Save Settings</button>
@@ -127,5 +127,10 @@ function escapeHtml(text) {
 }
 
 function escapeAttr(text) {
-  return text.replace(/"/g, '&quot;');
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
 }
