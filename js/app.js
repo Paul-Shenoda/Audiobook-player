@@ -1,114 +1,72 @@
-const fileInput = document.getElementById('audio-upload');
-const player = document.getElementById('main-audio');
-const playBtn = document.getElementById('play-pause-btn');
-const chapterTitle = document.getElementById('Chapter-Title');
-const authorName = document.getElementById('Author-Name');
+/* --- Audiobook Player Application --- */
 
-fileInput.addEventListener('change', function(event){
-    //1. Get the selected file
+// Centralized DOM references (from utils.js)
+const el = getPlayerElements();
+
+// --- FILE LOADING ---
+el.fileInput.addEventListener('change', function(event) {
     const file = event.target.files[0];
-        //Safety check
-    if(!file) return;
-    //2. Create a URL for the file
+    if (!file) return;
+
     const fileURL = URL.createObjectURL(file);
-    //3. Set the audio player's source to the file URL
-    player.src = fileURL;
-    //4 Update the text (Temprorary)
-    chapterTitle.innerText = "Loading Chapter...";
-    //5. Read the ID3 tags
+    el.player.src = fileURL;
+
+    updateMetadata(el, "Loading Chapter...", "--");
+
     jsmediatags.read(file, {
         onSuccess: function(tag) {
-            chapterTitle.innerText = tag.tags.title || file.name;
-            authorName.innerText = tag.tags.artist || "Unknown Artist";
+            updateMetadata(el, tag.tags.title || file.name, tag.tags.artist);
         },
-        onError: function(error) {
-            chapterTitle.innerText = file.name;
+        onError: function() {
+            updateMetadata(el, file.name, "Unknown Artist");
         }
     });
 
-    //6. Play the audio
-    playBtn.innerText = "▶";
+    setPlayState(el.playBtn, false);
 });
 
-/* HELPER: Format Seconds into MM:SS 
-   Input: 3661s -> Output: "61:01"
-*/
-function formatTime(seconds) {
-    // 1. Calculate minutes (drop the decimal part)
-    const minutes = Math.floor(seconds / 60);
-    
-    // 2. Calculate remaining seconds
-    const secs = Math.floor(seconds % 60);
-    
-    // 3. Add a leading zero if seconds are single digit (e.g., "5" becomes "05")
-    // "05" vs "5" -> We use a ternary operator here: (condition ? true : false)
-    return `${minutes}:${secs < 10 ? '0' : ''}${secs}`;
-}
+// --- CONTROLS LOGIC ---
 
-/* --- CONTROLS LOGIC --- */
-
-// 1. Play / Pause Toggle
-playBtn.addEventListener('click', function() {
-    // Check if the player is currently paused
-    if (player.paused) {
-        player.play();
-        playBtn.innerText = "⏸"; // Change icon to Pause
-        
-        // Add a "glow" class to show it's active (optional style)
-        playBtn.classList.add('playing'); 
+// Play / Pause Toggle
+el.playBtn.addEventListener('click', function() {
+    if (el.player.paused) {
+        el.player.play();
     } else {
-        player.pause();
-        playBtn.innerText = "▶";  // Change icon back to Play
-        playBtn.classList.remove('playing');
+        el.player.pause();
     }
+    setPlayState(el.playBtn, !el.player.paused);
 });
 
-// 2. Skip Buttons (Rewind / Forward 15s)
-// We defined these IDs in the HTML, now we grab them.
-const rewindBtn = document.getElementById('rewind-btn');
-const forwardBtn = document.getElementById('forward-btn');
-
-rewindBtn.addEventListener('click', () => {
-    player.currentTime -= 15; // Go back 15s
+// Skip Buttons (Rewind / Forward)
+el.rewindBtn.addEventListener('click', () => {
+    skipTime(el.player, -SKIP_DURATION);
 });
 
-forwardBtn.addEventListener('click', () => {
-    player.currentTime += 15; // Go forward 15s
+el.forwardBtn.addEventListener('click', () => {
+    skipTime(el.player, SKIP_DURATION);
 });
 
-/* --- PROGRESS BAR LOGIC --- */
-const seekBar = document.getElementById('seek-bar');
-const currentTimeText = document.getElementById('current-time');
-const durationText = document.getElementById('duration');
+// --- PROGRESS BAR LOGIC ---
 
-// 1. Update the UI as the song plays (The Heartbeat)
-player.addEventListener('timeupdate', () => {
-    // Avoid "NaN" (Not a Number) errors if nothing is loaded
-    if (!player.duration) return;
+// Update the UI as the audio plays
+el.player.addEventListener('timeupdate', () => {
+    if (!el.player.duration) return;
 
-    // Calculate percentage: (Current Time / Total Duration) * 100
-    const value = (player.currentTime / player.duration) * 100;
-    
-    // Update the slider position
-    seekBar.value = value;
-    
-    // Update the text numbers (using our helper function)
-    currentTimeText.innerText = formatTime(player.currentTime);
-    durationText.innerText = formatTime(player.duration);
+    const progress = (el.player.currentTime / el.player.duration) * 100;
+    el.seekBar.value = progress;
+
+    el.currentTimeText.innerText = formatTime(el.player.currentTime);
+    el.durationText.innerText = formatTime(el.player.duration);
 });
 
-// 2. Allow user to drag the slider (Scrubbing)
-seekBar.addEventListener('input', () => {
-    // Calculate the new time based on the slider value
-    // (Slider Value / 100) * Total Duration
-    const newTime = (seekBar.value / 100) * player.duration;
-    
-    // Tell the player to jump to that time
-    player.currentTime = newTime;
+// Allow user to drag the slider (Scrubbing)
+el.seekBar.addEventListener('input', () => {
+    const newTime = (el.seekBar.value / 100) * el.player.duration;
+    el.player.currentTime = newTime;
 });
 
-// 3. Reset when audio ends
-player.addEventListener('ended', () => {
-    playBtn.innerText = "▶";
-    seekBar.value = 0;
+// Reset when audio ends
+el.player.addEventListener('ended', () => {
+    setPlayState(el.playBtn, false);
+    el.seekBar.value = 0;
 });
