@@ -8,6 +8,11 @@ function ttsProxyPlugin() {
   return {
     name: 'tts-proxy',
     configureServer(server) {
+      const MAX_TEXT_LENGTH = 4096;
+      const ALLOWED_VOICES = new Set([
+        'alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer',
+      ]);
+
       server.middlewares.use('/api/tts', async (req, res) => {
         if (req.method !== 'POST') {
           res.statusCode = 405;
@@ -20,7 +25,41 @@ function ttsProxyPlugin() {
         for await (const chunk of req) {
           chunks.push(chunk);
         }
-        const body = JSON.parse(Buffer.concat(chunks).toString());
+
+        let body;
+        try {
+          body = JSON.parse(Buffer.concat(chunks).toString());
+        } catch {
+          res.statusCode = 400;
+          res.end('Invalid JSON');
+          return;
+        }
+
+        if (typeof body.text !== 'string' || !body.text.trim()) {
+          res.statusCode = 400;
+          res.end('Missing or empty text field');
+          return;
+        }
+
+        if (body.text.length > MAX_TEXT_LENGTH) {
+          res.statusCode = 400;
+          res.end(`Text exceeds maximum length of ${MAX_TEXT_LENGTH} characters`);
+          return;
+        }
+
+        const voice = body.voice || 'nova';
+        if (!ALLOWED_VOICES.has(voice)) {
+          res.statusCode = 400;
+          res.end(`Invalid voice: ${voice}`);
+          return;
+        }
+
+        const speed = Number(body.speed ?? 1);
+        if (!Number.isFinite(speed) || speed < 0.25 || speed > 4.0) {
+          res.statusCode = 400;
+          res.end('Speed must be between 0.25 and 4.0');
+          return;
+        }
 
         const apiKey =
           req.headers.authorization?.replace(/^Bearer\s+/i, '') ||
@@ -42,8 +81,8 @@ function ttsProxyPlugin() {
             body: JSON.stringify({
               model: 'tts-1',
               input: body.text,
-              voice: body.voice || 'nova',
-              speed: body.speed ?? 1,
+              voice,
+              speed,
             }),
           });
 

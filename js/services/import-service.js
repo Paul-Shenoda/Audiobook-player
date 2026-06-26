@@ -48,6 +48,14 @@ export async function importSingleFile(file, existing) {
     return importEpub(file);
   }
 
+  const isAudio =
+    file.type.startsWith('audio/') ||
+    file.name.toLowerCase().endsWith('.mp3');
+
+  if (!isAudio) {
+    throw new Error('unsupported file type');
+  }
+
   return importMp3(file);
 }
 
