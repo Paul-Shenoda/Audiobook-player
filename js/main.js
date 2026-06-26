@@ -24,13 +24,25 @@ playbackManager.onStateChange = () => {
   renderMiniPlayer(miniPlayerEl, { onOpenBook: openBook });
 };
 
-async function showLibrary() {
-  runCleanup({ keepPlayback: true });
-  await renderLibrary(app, {
-    onOpenBook: openBook,
-    onOpenSettings: showSettings,
-  });
+/**
+ * Navigate to a view, handling cleanup and mini-player refresh.
+ * @param {{ keepPlayback: boolean }} cleanupOpts
+ * @param {() => (Promise<{ cleanup?: Function }|void>|{ cleanup?: Function }|void)} renderFn
+ */
+async function navigateTo(cleanupOpts, renderFn) {
+  runCleanup(cleanupOpts);
+  const view = await renderFn();
+  currentCleanup = view?.cleanup ?? null;
   renderMiniPlayer(miniPlayerEl, { onOpenBook: openBook });
+}
+
+async function showLibrary() {
+  await navigateTo({ keepPlayback: true }, () =>
+    renderLibrary(app, {
+      onOpenBook: openBook,
+      onOpenSettings: showSettings,
+    }),
+  );
 }
 
 /**
@@ -48,35 +60,33 @@ function openBook(book) {
  * @param {import('./storage/library-db.js').Book} book
  */
 function showMp3Player(book) {
-  runCleanup({ keepPlayback: false });
-  playbackManager.setActive(book, 'mp3');
-  const view = renderMp3Player(app, book, {
-    onBack: showLibrary,
-    keepPlaybackOnBack: true,
+  navigateTo({ keepPlayback: false }, () => {
+    playbackManager.setActive(book, 'mp3');
+    return renderMp3Player(app, book, {
+      onBack: showLibrary,
+      keepPlaybackOnBack: true,
+    });
   });
-  currentCleanup = view.cleanup;
-  renderMiniPlayer(miniPlayerEl, { onOpenBook: openBook });
 }
 
 /**
  * @param {import('./storage/library-db.js').Book} book
  */
 async function showEpubListen(book) {
-  runCleanup({ keepPlayback: false });
-  playbackManager.setActive(book, 'epub');
-  const view = await renderEpubListen(app, book, {
-    onBack: showLibrary,
-    onOpenSettings: showSettings,
-    keepPlaybackOnBack: true,
+  await navigateTo({ keepPlayback: false }, async () => {
+    playbackManager.setActive(book, 'epub');
+    return renderEpubListen(app, book, {
+      onBack: showLibrary,
+      onOpenSettings: showSettings,
+      keepPlaybackOnBack: true,
+    });
   });
-  currentCleanup = view.cleanup;
-  renderMiniPlayer(miniPlayerEl, { onOpenBook: openBook });
 }
 
 async function showSettings() {
-  runCleanup({ keepPlayback: true });
-  await renderSettings(app, { onBack: showLibrary });
-  renderMiniPlayer(miniPlayerEl, { onOpenBook: openBook });
+  await navigateTo({ keepPlayback: true }, () =>
+    renderSettings(app, { onBack: showLibrary }),
+  );
 }
 
 /**
@@ -91,7 +101,6 @@ function runCleanup(options = {}) {
   if (!keepPlayback) {
     playbackManager.clear();
   }
-  renderMiniPlayer(miniPlayerEl, { onOpenBook: openBook });
 }
 
 showLibrary();

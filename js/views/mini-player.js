@@ -1,5 +1,6 @@
 import { playbackManager } from '../services/playback-manager.js';
 import { icon } from '../utils/icons.js';
+import { escapeHtml } from '../utils/escape-html.js';
 import {
   getBookCoverUrl,
   ensureFallbackCoverUrl,
@@ -76,8 +77,4 @@ export function renderMiniPlayer(container, { onOpenBook }) {
   });
 }
 
-function escapeHtml(text) {
-  const div = document.createElement('div');
-  div.textContent = text;
-  return div.innerHTML;
-}
+

@@ -4,6 +4,8 @@ import { createManagedObjectUrl, revokeManagedObjectUrl } from '../utils/object-
 import { updateBook } from '../storage/library-db.js';
 import { playbackManager } from '../services/playback-manager.js';
 import { icon } from '../utils/icons.js';
+import { escapeHtml } from '../utils/escape-html.js';
+import { SKIP_DURATION, skipTime } from '../utils/playback.js';
 import { renderCoverMarkup, getBookCoverUrl } from '../utils/cover-art.js';
 
 /**
@@ -98,13 +100,11 @@ export function renderMp3Player(container, book, { onBack, keepPlaybackOnBack = 
   });
 
   container.querySelector('#rewind-btn').addEventListener('click', () => {
-    player.currentTime = Math.max(0, player.currentTime - 15);
+    skipTime(player, -SKIP_DURATION);
   });
 
   container.querySelector('#forward-btn').addEventListener('click', () => {
-    if (player.duration) {
-      player.currentTime = Math.min(player.duration, player.currentTime + 15);
-    }
+    skipTime(player, SKIP_DURATION);
   });
 
   player.addEventListener('timeupdate', () => {
@@ -160,8 +160,4 @@ export function renderMp3Player(container, book, { onBack, keepPlaybackOnBack = 
   return { cleanup };
 }
 
-function escapeHtml(text) {
-  const div = document.createElement('div');
-  div.textContent = text;
-  return div.innerHTML;
-}
+

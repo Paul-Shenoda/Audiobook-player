@@ -1,6 +1,7 @@
 import { WebSpeechTTS } from './web-speech.js';
 import { cacheKey, getCachedAudio, setCachedAudio } from './chunk-cache.js';
 import { createOpenAIProvider } from './openai-tts.js';
+import { getErrorMessage } from '../utils/error-message.js';
 
 const SETTINGS_KEY = 'tts-settings';
 
@@ -189,7 +190,7 @@ export class TTSRouter {
       if (this.settings.providerId === 'openai') {
         this.onError?.(
           new Error(
-            `${err instanceof Error ? err.message : String(err)} — falling back to Web Speech`,
+            `${getErrorMessage(err)} — falling back to Web Speech`,
           ),
         );
         this.fallbackToWebSpeech(this.chunkIndex);
