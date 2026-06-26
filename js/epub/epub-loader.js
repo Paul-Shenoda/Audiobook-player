@@ -28,8 +28,8 @@ export async function openEpub(source) {
     if (cover) {
       coverUrl = cover;
     }
-  } catch {
-    // Cover is optional
+  } catch (err) {
+    console.warn('[EPUB] Could not extract cover URL:', err);
   }
 
   if (!coverUrl) {
@@ -99,8 +99,8 @@ async function findCoverFromManifest(book) {
     if (imageItem?.href) {
       return book.path.resolve(imageItem.href);
     }
-  } catch {
-    // ignore
+  } catch (err) {
+    console.warn('[EPUB] Could not read cover from manifest:', err);
   }
   return null;
 }
@@ -116,7 +116,8 @@ export async function fetchCoverBlob(coverUrl) {
     const response = await fetch(coverUrl);
     if (!response.ok) return null;
     return await response.blob();
-  } catch {
+  } catch (err) {
+    console.warn('[EPUB] Could not fetch cover blob:', err);
     return null;
   }
 }

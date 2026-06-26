@@ -5,6 +5,7 @@ import { updateBook } from '../storage/library-db.js';
 import { playbackManager } from '../services/playback-manager.js';
 import { icon } from '../utils/icons.js';
 import { renderCoverMarkup, getBookCoverUrl } from '../utils/cover-art.js';
+import { showToast } from '../utils/toast.js';
 
 /**
  * @typedef {import('../storage/library-db.js').Book} Book
@@ -70,8 +71,8 @@ export function renderMp3Player(container, book, { onBack, keepPlaybackOnBack = 
         chapterTitle.textContent = tag.tags.title;
       }
     },
-    onError() {
-      // Keep book metadata from library
+    onError(error) {
+      console.warn('[MP3 Player] Could not read ID3 tags:', error.type, error.info);
     },
   });
 
@@ -85,11 +86,47 @@ export function renderMp3Player(container, book, { onBack, keepPlaybackOnBack = 
     playBtn.innerHTML = playing ? icon('pause', 32) : icon('play', 32);
   }
 
+  player.addEventListener('error', () => {
+    const err = player.error;
+    let message = 'Error loading audio';
+    if (err) {
+      switch (err.code) {
+        case MediaError.MEDIA_ERR_ABORTED:
+          message = 'Playback aborted';
+          break;
+        case MediaError.MEDIA_ERR_NETWORK:
+          message = 'Network error while loading audio';
+          break;
+        case MediaError.MEDIA_ERR_DECODE:
+          message = 'File could not be decoded';
+          break;
+        case MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED:
+          message = 'Audio format not supported';
+          break;
+      }
+      console.error('[MP3 Player] Audio error:', err.code, err.message);
+    }
+    chapterTitle.textContent = message;
+    setPlayIcon(false);
+    playbackManager.setPaused(true);
+    seekBar.value = '0';
+    currentTimeText.textContent = '0:00';
+    durationText.textContent = '0:00';
+    showToast(message, 'error');
+  });
+
   playBtn.addEventListener('click', () => {
     if (player.paused) {
-      player.play().catch(() => setPlayIcon(false));
-      setPlayIcon(true);
-      playbackManager.setPlaying(true);
+      player.play()
+        .then(() => {
+          setPlayIcon(true);
+          playbackManager.setPlaying(true);
+        })
+        .catch((err) => {
+          console.error('[MP3 Player] Playback failed:', err.message);
+          setPlayIcon(false);
+          showToast('Playback failed', 'error');
+        });
     } else {
       player.pause();
       setPlayIcon(false);
@@ -98,6 +135,7 @@ export function renderMp3Player(container, book, { onBack, keepPlaybackOnBack = 
   });
 
   container.querySelector('#rewind-btn').addEventListener('click', () => {
+    if (!player.duration) return;
     player.currentTime = Math.max(0, player.currentTime - 15);
   });
 

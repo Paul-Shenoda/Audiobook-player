@@ -83,7 +83,10 @@ export async function addBook(data) {
 export async function updateBook(id, updates) {
   const db = await getDb();
   const existing = await db.get(BOOKS_STORE, id);
-  if (!existing) return;
+  if (!existing) {
+    console.warn('[DB] updateBook: no book found with id', id);
+    return;
+  }
   const updated = { ...existing, ...updates, id };
   await db.put(BOOKS_STORE, updated);
   return updated;
