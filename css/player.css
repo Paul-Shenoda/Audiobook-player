@@ -151,6 +151,42 @@
     background: var(--border-color);
 }
 
+.speed-control {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: 16px;
+}
+
+.speed-step-btn {
+    background: var(--surface-color);
+    border-radius: 8px;
+    font-size: 1.2rem;
+    font-weight: 600;
+    width: 44px;
+    height: 44px;
+    line-height: 1;
+    color: var(--text-color);
+}
+
+.speed-step-btn:hover:not(:disabled) {
+    background: var(--border-color);
+}
+
+.speed-step-btn:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+}
+
+.speed-label {
+    min-width: 52px;
+    text-align: center;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text-color);
+    font-variant-numeric: tabular-nums;
+}
+
 .epub-listen-view .player-container {
     justify-content: flex-start;
     padding-top: 16px;

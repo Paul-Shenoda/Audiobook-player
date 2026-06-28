@@ -240,6 +240,19 @@ export class TTSRouter {
     return this.webSpeech.listVoices();
   }
 
+  /**
+   * Update playback rate immediately, even while speaking.
+   * @param {number} rate
+   */
+  setRate(rate) {
+    this.settings = { ...this.settings, rate };
+    saveTTSSettings(this.settings);
+    this.webSpeech.setRate(rate);
+    if (this.audio) {
+      this.audio.playbackRate = rate;
+    }
+  }
+
   getCurrentChunkIndex() {
     if (this.settings.providerId === 'openai' && this.aiProvider) {
       return this.chunkIndex;

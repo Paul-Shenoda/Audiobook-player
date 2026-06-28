@@ -2,6 +2,7 @@ import {
   openEpub,
   loadChapterText,
   destroyEpub,
+  findFirstContentChapter,
 } from '../epub/epub-loader.js';
 import { chunkText } from '../epub/text-extract.js';
 import {
@@ -54,6 +55,11 @@ export async function renderEpubListen(container, book, { onBack, onOpenSettings
           <button class="play-btn listen-btn icon-btn-touch" id="listen-pause-btn" type="button" aria-label="Play or pause">${icon('play', 28)}<span>Listen</span></button>
           <button class="chapter-btn icon-btn-touch" id="next-chapter-btn" type="button" aria-label="Next chapter">${icon('nextChapter')}</button>
         </div>
+        <div class="speed-control">
+          <button class="speed-step-btn icon-btn-touch" id="speed-down-btn" type="button" aria-label="Decrease speed">−</button>
+          <span class="speed-label" id="speed-label" aria-live="polite"></span>
+          <button class="speed-step-btn icon-btn-touch" id="speed-up-btn" type="button" aria-label="Increase speed">+</button>
+        </div>
         <button class="stop-btn" id="stop-btn" type="button">Stop</button>
         <p class="status-text" id="status-text"></p>
       </div>
@@ -73,7 +79,41 @@ export async function renderEpubListen(container, book, { onBack, onOpenSettings
   let chunks = [];
   let totalChapters = 0;
 
-  ttsRouter.configure(loadTTSSettings());
+  const SPEED_STEPS = [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
+  const settings = loadTTSSettings();
+  ttsRouter.configure(settings);
+
+  let currentRate = settings.rate ?? 1.0;
+  // Clamp to nearest step so the display is always one of the labelled values.
+  currentRate = SPEED_STEPS.reduce((prev, s) =>
+    Math.abs(s - currentRate) < Math.abs(prev - currentRate) ? s : prev,
+  );
+
+  const speedLabel = container.querySelector('#speed-label');
+  function updateSpeedDisplay() {
+    speedLabel.textContent = `${currentRate}×`;
+    container.querySelector('#speed-down-btn').disabled = currentRate <= SPEED_STEPS[0];
+    container.querySelector('#speed-up-btn').disabled = currentRate >= SPEED_STEPS[SPEED_STEPS.length - 1];
+  }
+  updateSpeedDisplay();
+
+  container.querySelector('#speed-down-btn').addEventListener('click', () => {
+    const idx = SPEED_STEPS.indexOf(currentRate);
+    if (idx > 0) {
+      currentRate = SPEED_STEPS[idx - 1];
+      ttsRouter.setRate(currentRate);
+      updateSpeedDisplay();
+    }
+  });
+
+  container.querySelector('#speed-up-btn').addEventListener('click', () => {
+    const idx = SPEED_STEPS.indexOf(currentRate);
+    if (idx < SPEED_STEPS.length - 1) {
+      currentRate = SPEED_STEPS[idx + 1];
+      ttsRouter.setRate(currentRate);
+      updateSpeedDisplay();
+    }
+  });
 
   try {
     const arrayBuffer = await book.fileBlob.arrayBuffer();
@@ -82,6 +122,13 @@ export async function renderEpubListen(container, book, { onBack, onOpenSettings
     totalChapters = metadata.spineLength;
     titleEl.textContent = metadata.title;
     authorEl.textContent = metadata.author;
+
+    // For fresh books (no saved progress), jump past front matter to the first
+    // real content chapter automatically.
+    const hasSavedProgress = book.progress?.chapterIndex != null || book.progress?.chunkIndex != null;
+    if (!hasSavedProgress) {
+      chapterIndex = await findFirstContentChapter(epubBook);
+    }
 
     await loadAndPrepareChapter();
   } catch (err) {
