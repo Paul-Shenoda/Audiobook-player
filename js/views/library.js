@@ -40,7 +40,7 @@ export async function renderLibrary(container, { onOpenBook, onOpenSettings }) {
           <button class="icon-btn-touch" id="settings-btn" type="button" aria-label="Settings">${icon('settings')}</button>
           <label class="import-btn primary-btn">
             ${icon('add', 20)} Add Books
-            <input type="file" id="import-input" accept=".mp3,audio/mpeg,.epub,application/epub+zip" multiple hidden>
+            <input type="file" id="import-input" accept=".mp3,audio/mpeg,.epub,application/epub+zip" multiple class="visually-hidden">
           </label>
         </div>
       </header>

@@ -2,14 +2,15 @@
   "name": "Audiobook Library",
   "short_name": "Library",
   "description": "Personal MP3 and EPUB listen library",
-  "start_url": "/",
+  "start_url": "/Audiobook-player/",
+  "scope": "/Audiobook-player/",
   "display": "standalone",
   "background_color": "#0f1419",
   "theme_color": "#0f1419",
   "orientation": "portrait-primary",
   "icons": [
     {
-      "src": "/icons/icon.svg",
+      "src": "/Audiobook-player/icons/icon.svg",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any"
