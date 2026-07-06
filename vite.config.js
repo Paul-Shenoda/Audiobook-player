@@ -1,4 +1,5 @@
 import { defineConfig, loadEnv } from 'vite';
+import { VitePWA } from 'vite-plugin-pwa';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -83,5 +84,18 @@ export default defineConfig({
   optimizeDeps: {
     include: ['epubjs', 'jsmediatags', 'idb'],
   },
-  plugins: [ttsProxyPlugin()],
+  plugins: [
+    ttsProxyPlugin(),
+    VitePWA({
+      // Keep the hand-written public/manifest.json instead of generating one.
+      manifest: false,
+      registerType: 'prompt',
+      includeAssets: ['manifest.json', 'icons/icon.svg'],
+      workbox: {
+        globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2}'],
+        // Never intercept the TTS proxy or other API calls.
+        navigateFallbackDenylist: [/^\/api\//],
+      },
+    }),
+  ],
 });

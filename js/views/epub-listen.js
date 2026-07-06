@@ -3,6 +3,7 @@ import {
   loadChapterText,
   destroyEpub,
   findFirstContentChapter,
+  getChapterList,
 } from '../epub/epub-loader.js';
 import { chunkText } from '../epub/text-extract.js';
 import {
@@ -13,7 +14,14 @@ import {
 import { loadTTSSettings } from '../tts/tts-router.js';
 import { updateBook } from '../storage/library-db.js';
 import { playbackManager } from '../services/playback-manager.js';
+import { createSleepTimer } from '../services/sleep-timer.js';
+import {
+  initMediaSession,
+  setMediaPlaybackState,
+  teardownMediaSession,
+} from '../services/media-session.js';
 import { icon } from '../utils/icons.js';
+import { isIOS } from '../utils/platform.js';
 import { renderCoverMarkup } from '../utils/cover-art.js';
 import { showToast } from '../utils/toast.js';
 
@@ -43,7 +51,11 @@ export async function renderEpubListen(container, book, { onBack, onOpenSettings
           <h2 id="epub-title" class="player-title">Loading...</h2>
           <p id="epub-author" class="player-author">--</p>
         </div>
-        <p class="chapter-label" id="chapter-label">Chapter 1</p>
+        <div class="chapter-row">
+          <button class="chapter-picker-btn" id="chapter-picker-btn" type="button" aria-label="Choose chapter">${icon('list', 18)}<span id="chapter-label">Chapter 1</span></button>
+          <button class="chapter-picker-btn" id="text-toggle-btn" type="button" aria-label="Show or hide text">${icon('text', 18)}<span>Text</span></button>
+        </div>
+        <div class="read-along" id="read-along-panel" hidden></div>
         <div class="epub-progress-section">
           <div class="progress-bar-track">
             <div class="progress-bar-fill" id="listen-progress" style="width: 0%"></div>
@@ -60,6 +72,7 @@ export async function renderEpubListen(container, book, { onBack, onOpenSettings
           <span class="speed-label" id="speed-label" aria-live="polite"></span>
           <button class="speed-step-btn icon-btn-touch" id="speed-up-btn" type="button" aria-label="Increase speed">+</button>
         </div>
+        <button class="sleep-btn" id="sleep-btn" type="button" aria-label="Sleep timer">${icon('moon', 18)}<span id="sleep-label">Sleep: Off</span></button>
         <button class="stop-btn" id="stop-btn" type="button">Stop</button>
         <p class="status-text" id="status-text"></p>
       </div>
@@ -78,10 +91,61 @@ export async function renderEpubListen(container, book, { onBack, onOpenSettings
   let chapterIndex = book.progress?.chapterIndex ?? 0;
   let chunks = [];
   let totalChapters = 0;
+  let currentChunkIndex = 0;
+  /** @type {import('../epub/epub-loader.js').ChapterEntry[]} */
+  let chapterList = [];
 
   const SPEED_STEPS = [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
   const settings = loadTTSSettings();
   ttsRouter.configure(settings);
+
+  maybeShowIOSWebSpeechHint(settings);
+
+  const READ_ALONG_KEY = 'read-along-open';
+  const readAlongPanel = container.querySelector('#read-along-panel');
+  const textToggleBtn = container.querySelector('#text-toggle-btn');
+  let readAlongOpen = localStorage.getItem(READ_ALONG_KEY) === '1';
+
+  function applyReadAlongVisibility() {
+    readAlongPanel.hidden = !readAlongOpen;
+    textToggleBtn.classList.toggle('chapter-picker-btn--active', readAlongOpen);
+    if (readAlongOpen) highlightChunk(currentChunkIndex);
+  }
+
+  textToggleBtn.addEventListener('click', () => {
+    readAlongOpen = !readAlongOpen;
+    localStorage.setItem(READ_ALONG_KEY, readAlongOpen ? '1' : '0');
+    applyReadAlongVisibility();
+  });
+  applyReadAlongVisibility();
+
+  function renderReadAlong(startChunk) {
+    readAlongPanel.innerHTML = chunks
+      .map((c, i) => `<p data-chunk-index="${i}">${escapeHtml(c)}</p>`)
+      .join('');
+    readAlongPanel.querySelectorAll('[data-chunk-index]').forEach((p) => {
+      p.addEventListener('click', () => {
+        const idx = Number(p.getAttribute('data-chunk-index'));
+        ttsRouter.stop();
+        startListening(idx);
+      });
+    });
+    highlightChunk(startChunk);
+  }
+
+  function highlightChunk(index) {
+    currentChunkIndex = index;
+    readAlongPanel.querySelector('.chunk-current')?.classList.remove('chunk-current');
+    const el = readAlongPanel.querySelector(`[data-chunk-index="${index}"]`);
+    if (!el) return;
+    el.classList.add('chunk-current');
+    if (readAlongOpen) {
+      // Scroll within the panel only — scrollIntoView would also jerk the
+      // page. The panel is position:relative so offsetTop is panel-relative.
+      readAlongPanel.scrollTop =
+        el.offsetTop - readAlongPanel.clientHeight / 2 + el.clientHeight / 2;
+    }
+  }
 
   let currentRate = settings.rate ?? 1.0;
   // Clamp to nearest step so the display is always one of the labelled values.
@@ -122,6 +186,7 @@ export async function renderEpubListen(container, book, { onBack, onOpenSettings
     totalChapters = metadata.spineLength;
     titleEl.textContent = metadata.title;
     authorEl.textContent = metadata.author;
+    chapterList = await getChapterList(epubBook);
 
     // For fresh books (no saved progress), jump past front matter to the first
     // real content chapter automatically.
@@ -148,33 +213,109 @@ export async function renderEpubListen(container, book, { onBack, onOpenSettings
     onOpenSettings();
   });
 
-  container.querySelector('#prev-chapter-btn').addEventListener('click', async () => {
+  async function goPrevChapter() {
     if (chapterIndex > 0) {
       ttsRouter.stop();
       chapterIndex -= 1;
       await loadAndPrepareChapter();
     }
-  });
+  }
 
-  container.querySelector('#next-chapter-btn').addEventListener('click', async () => {
+  async function goNextChapter() {
     if (chapterIndex < totalChapters - 1) {
       ttsRouter.stop();
       chapterIndex += 1;
       await loadAndPrepareChapter();
     }
-  });
+  }
 
-  listenBtn.addEventListener('click', async () => {
-    if (ttsRouter.isPlaying() && !ttsRouter.isPaused()) {
-      ttsRouter.pause();
-      setListenButton(false, true);
-      playbackManager.setPaused(true);
-    } else if (ttsRouter.isPaused()) {
+  function pauseListening() {
+    ttsRouter.pause();
+    setListenButton(false, true);
+    playbackManager.setPaused(true);
+    setMediaPlaybackState('paused');
+  }
+
+  const sleepBtn = container.querySelector('#sleep-btn');
+  const sleepLabel = container.querySelector('#sleep-label');
+  const sleepTimer = createSleepTimer({
+    modes: ['off', '15', '30', '60', 'chapter'],
+    onExpire: pauseListening,
+    onTick: (text) => {
+      sleepLabel.textContent = text;
+      sleepBtn.classList.toggle('sleep-btn--active', sleepTimer.getMode() !== 'off');
+    },
+  });
+  sleepBtn.addEventListener('click', () => sleepTimer.cycle());
+
+  async function resumeOrStart() {
+    if (ttsRouter.isPaused()) {
       ttsRouter.resume();
       setListenButton(true);
       playbackManager.setPlaying(true);
-    } else {
+      setMediaPlaybackState('playing');
+    } else if (!ttsRouter.isPlaying()) {
       await startListening();
+    }
+  }
+
+  container.querySelector('#prev-chapter-btn').addEventListener('click', goPrevChapter);
+  container.querySelector('#next-chapter-btn').addEventListener('click', goNextChapter);
+  container.querySelector('#chapter-picker-btn').addEventListener('click', openChapterSheet);
+
+  function openChapterSheet() {
+    if (!chapterList.length) return;
+    closeChapterSheet();
+
+    const sheet = document.createElement('div');
+    sheet.className = 'chapter-sheet';
+    sheet.innerHTML = `
+      <div class="chapter-sheet-panel">
+        <div class="chapter-sheet-header">
+          <h3>Chapters</h3>
+          <button class="icon-btn-touch" id="chapter-sheet-close" type="button" aria-label="Close">${icon('close')}</button>
+        </div>
+        <div class="chapter-sheet-list">
+          ${chapterList
+            .map(
+              (c) =>
+                `<button type="button" data-chapter-index="${c.spineIndex}" class="${c.spineIndex === chapterIndex ? 'chapter-current' : ''}">${escapeHtml(c.label)}</button>`,
+            )
+            .join('')}
+        </div>
+      </div>
+    `;
+    document.body.appendChild(sheet);
+
+    sheet.addEventListener('click', (e) => {
+      if (e.target === sheet) closeChapterSheet();
+    });
+    sheet.querySelector('#chapter-sheet-close').addEventListener('click', closeChapterSheet);
+    sheet.querySelectorAll('[data-chapter-index]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const idx = Number(btn.getAttribute('data-chapter-index'));
+        closeChapterSheet();
+        if (idx !== chapterIndex) {
+          ttsRouter.stop();
+          setListenButton(false);
+          chapterIndex = idx;
+          await loadAndPrepareChapter();
+        }
+      });
+    });
+
+    sheet.querySelector('.chapter-current')?.scrollIntoView({ block: 'center' });
+  }
+
+  function closeChapterSheet() {
+    document.querySelector('.chapter-sheet')?.remove();
+  }
+
+  listenBtn.addEventListener('click', async () => {
+    if (ttsRouter.isPlaying() && !ttsRouter.isPaused()) {
+      pauseListening();
+    } else {
+      await resumeOrStart();
     }
   });
 
@@ -183,6 +324,14 @@ export async function renderEpubListen(container, book, { onBack, onOpenSettings
     setListenButton(false);
     statusText.textContent = 'Stopped';
     playbackManager.setPaused(true);
+    setMediaPlaybackState('paused');
+  });
+
+  initMediaSession(book, {
+    onPlay: resumeOrStart,
+    onPause: pauseListening,
+    onPreviousTrack: goPrevChapter,
+    onNextTrack: goNextChapter,
   });
 
   function setListenButton(playing, paused = false) {
@@ -197,20 +346,31 @@ export async function renderEpubListen(container, book, { onBack, onOpenSettings
 
   async function loadAndPrepareChapter() {
     if (!epubBook) return;
-    chapterLabel.textContent = `Chapter ${chapterIndex + 1} of ${totalChapters}`;
+    const entry = chapterList[chapterIndex];
+    chapterLabel.textContent = entry?.hasTocLabel
+      ? entry.label
+      : `Chapter ${chapterIndex + 1} of ${totalChapters}`;
     statusText.textContent = 'Loading chapter...';
 
     try {
       const text = await loadChapterText(epubBook, chapterIndex);
       chunks = chunkText(text);
-      statusText.textContent = chunks.length
+
+      let readyMsg = chunks.length
         ? `Ready — ${chunks.length} segment(s)`
         : 'This chapter has no readable text';
+      if (chunks.length && ttsRouter.aiProvider?.estimateCost) {
+        const chars = chunks.reduce((sum, c) => sum + c.length, 0);
+        const cost = ttsRouter.aiProvider.estimateCost(chars);
+        readyMsg += ` · ≈ ${cost < 0.005 ? '<$0.01' : `$${cost.toFixed(2)}`} AI narration`;
+      }
+      statusText.textContent = readyMsg;
 
       const saved = loadEpubProgress(book.id);
       const startChunk =
         saved && saved.chapterIndex === chapterIndex ? saved.chunkIndex : 0;
       updateProgressDisplay(startChunk);
+      renderReadAlong(startChunk);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       statusText.textContent = `Chapter load error: ${msg}`;
@@ -218,28 +378,51 @@ export async function renderEpubListen(container, book, { onBack, onOpenSettings
     }
   }
 
-  async function startListening() {
+  /**
+   * @param {number} [fromChunk] jump target; defaults to saved progress
+   */
+  async function startListening(fromChunk) {
     if (!chunks.length) return;
 
     const saved = loadEpubProgress(book.id);
     const startChunk =
-      saved && saved.chapterIndex === chapterIndex ? saved.chunkIndex : 0;
+      fromChunk ??
+      (saved && saved.chapterIndex === chapterIndex ? saved.chunkIndex : 0);
 
     ttsRouter.onChunkStart = (index) => {
       updateProgressDisplay(index);
+      highlightChunk(index);
       persistProgress(index);
       setListenButton(true);
       playbackManager.setPlaying(true);
+      setMediaPlaybackState('playing');
     };
 
-    ttsRouter.onComplete = () => {
-      setListenButton(false);
-      statusText.textContent = 'Chapter complete';
-      playbackManager.setPaused(true);
-      if (chapterIndex < totalChapters - 1) {
-        chapterIndex += 1;
-        loadAndPrepareChapter();
+    ttsRouter.onComplete = async () => {
+      const atEnd = chapterIndex >= totalChapters - 1;
+      const sleepAtChapterEnd = sleepTimer.getMode() === 'chapter';
+
+      if (atEnd || sleepAtChapterEnd) {
+        setListenButton(false);
+        statusText.textContent = atEnd
+          ? 'Book complete'
+          : 'Sleep timer — stopped at end of chapter';
+        playbackManager.setPaused(true);
+        setMediaPlaybackState('paused');
+        if (sleepAtChapterEnd) sleepTimer.reset();
+        if (atEnd) {
+          updateBook(book.id, { finishedAt: Date.now() });
+        } else {
+          chapterIndex += 1;
+          await loadAndPrepareChapter();
+        }
+        return;
       }
+
+      // Continuous playback: roll straight into the next chapter.
+      chapterIndex += 1;
+      await loadAndPrepareChapter();
+      await startListening();
     };
 
     ttsRouter.onError = (err) => {
@@ -248,6 +431,7 @@ export async function renderEpubListen(container, book, { onBack, onOpenSettings
       showToast(err.message, 'error', 6000);
       setListenButton(false);
       playbackManager.setPaused(true);
+      setMediaPlaybackState('paused');
     };
 
     setListenButton(true);
@@ -292,9 +476,12 @@ export async function renderEpubListen(container, book, { onBack, onOpenSettings
    */
   function cleanup(options = {}) {
     const { keepPlayback = false, destroyEpub: shouldDestroy = true } = options;
+    closeChapterSheet();
     if (!keepPlayback) {
       ttsRouter.stop();
       playbackManager.setPaused(true);
+      teardownMediaSession();
+      sleepTimer.destroy();
     }
     if (shouldDestroy) {
       destroyEpub(epubBook);
@@ -303,4 +490,28 @@ export async function renderEpubListen(container, book, { onBack, onOpenSettings
   }
 
   return { cleanup };
+}
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+const IOS_HINT_KEY = 'ios-web-speech-hint-shown';
+
+/**
+ * On iOS the built-in Web Speech voice stops when the screen locks or the
+ * app goes to the background. Shown once per device.
+ * @param {import('../tts/tts-router.js').TTSSettings} settings
+ */
+function maybeShowIOSWebSpeechHint(settings) {
+  if (!isIOS() || settings.providerId !== 'web-speech') return;
+  if (localStorage.getItem(IOS_HINT_KEY)) return;
+  localStorage.setItem(IOS_HINT_KEY, '1');
+  showToast(
+    'Tip: the built-in voice stops when the screen locks. For background listening, switch to OpenAI TTS in Settings.',
+    'info',
+    9000,
+  );
 }

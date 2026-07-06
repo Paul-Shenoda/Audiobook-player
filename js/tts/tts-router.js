@@ -60,6 +60,8 @@ export class TTSRouter {
     this.paused = false;
     this.bookId = '';
     this.chapterIndex = 0;
+    /** @type {Map<string, Promise<Blob>>} in-flight synth requests by cache key */
+    this.inflightSynth = new Map();
     /** @type {((index: number) => void)|null} */
     this.onChunkStart = null;
     /** @type {(() => void)|null} */
@@ -69,11 +71,12 @@ export class TTSRouter {
   }
 
   /**
+   * Apply settings to this router. Does not persist — call saveTTSSettings
+   * explicitly when the user commits a change.
    * @param {TTSSettings} settings
    */
   configure(settings) {
     this.settings = settings;
-    saveTTSSettings(settings);
 
     if (settings.providerId === 'openai') {
       this.aiProvider = createOpenAIProvider(settings.proxyUrl, settings.apiKey);
@@ -137,6 +140,44 @@ export class TTSRouter {
     this.webSpeech.speak(this.chunks, startIndex);
   }
 
+  /**
+   * Get chunk audio from cache, an in-flight request, or a fresh synthesis.
+   * Audio is always synthesized at 1x — playback speed is applied via
+   * audio.playbackRate — so cached chunks stay valid across speed changes.
+   * @param {number} index
+   * @returns {Promise<Blob>}
+   */
+  async getChunkAudio(index) {
+    const voiceId = this.settings.voiceId || 'nova';
+    const key = cacheKey(this.bookId, this.chapterIndex, index, voiceId, 'openai');
+
+    const cached = await getCachedAudio(key);
+    if (cached) return cached;
+
+    const inflight = this.inflightSynth.get(key);
+    if (inflight) return inflight;
+
+    const request = (async () => {
+      const blob = await this.aiProvider.synthesize(this.chunks[index], voiceId, {});
+      await setCachedAudio(key, blob, this.bookId);
+      return blob;
+    })().finally(() => {
+      this.inflightSynth.delete(key);
+    });
+    this.inflightSynth.set(key, request);
+    return request;
+  }
+
+  /**
+   * Warm the cache for the next chunk while the current one plays,
+   * so chunk transitions are gapless. Best-effort.
+   * @param {number} index
+   */
+  prefetchChunk(index) {
+    if (!this.aiProvider || index >= this.chunks.length) return;
+    this.getChunkAudio(index).catch(() => {});
+  }
+
   async playAIChunk() {
     if (this.chunkIndex >= this.chunks.length) {
       this.playing = false;
@@ -145,24 +186,9 @@ export class TTSRouter {
     }
 
     this.onChunkStart?.(this.chunkIndex);
-    const text = this.chunks[this.chunkIndex];
-    const voiceId = this.settings.voiceId || 'nova';
-    const key = cacheKey(
-      this.bookId,
-      this.chapterIndex,
-      this.chunkIndex,
-      voiceId,
-      'openai',
-    );
 
     try {
-      let blob = await getCachedAudio(key);
-      if (!blob) {
-        blob = await this.aiProvider.synthesize(text, voiceId, {
-          rate: this.settings.rate,
-        });
-        await setCachedAudio(key, blob, this.bookId);
-      }
+      const blob = await this.getChunkAudio(this.chunkIndex);
 
       if (this.audio) {
         this.audio.pause();
@@ -183,6 +209,7 @@ export class TTSRouter {
         this.onError?.(new Error('Audio playback failed'));
       };
 
+      this.prefetchChunk(this.chunkIndex + 1);
       await this.audio.play();
     } catch (err) {
       this.playing = false;

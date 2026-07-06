@@ -30,17 +30,30 @@ export async function ensureFallbackCoverUrl(book) {
 }
 
 /**
+ * Format label from the source file extension (MP3, M4B, EPUB, …).
+ * @param {Book} book
+ * @returns {string}
+ */
+export function getFormatBadge(book) {
+  if (book.type === 'epub') return 'EPUB';
+  const ext = (book.sourceFileName ?? '').split('.').pop()?.toLowerCase();
+  if (ext && ext.length <= 4 && ext !== book.sourceFileName?.toLowerCase()) {
+    return ext.toUpperCase();
+  }
+  return 'MP3';
+}
+
+/**
  * @param {Book} book
  * @param {string} [className='cover-img']
  * @returns {string}
  */
 export function renderCoverMarkup(book, className = 'cover-img') {
   const url = getBookCoverUrl(book);
-  const badge = book.type === 'mp3' ? 'MP3' : 'EPUB';
   if (url) {
     return `<img src="${url}" alt="" class="${className}">`;
   }
-  return `<div class="cover-placeholder cover-placeholder--loading">${badge}</div>`;
+  return `<div class="cover-placeholder cover-placeholder--loading">${getFormatBadge(book)}</div>`;
 }
 
 /**

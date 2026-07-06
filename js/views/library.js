@@ -1,24 +1,36 @@
 import {
   getAllBooks,
   deleteBook,
+  updateBook,
 } from '../storage/library-db.js';
 import { importBooks } from '../services/import-service.js';
+import { requestPersistentStorage } from '../utils/storage-persist.js';
 import { clearBookCache } from '../tts/chunk-cache.js';
 import { showToast } from '../utils/toast.js';
+import { isIOS } from '../utils/platform.js';
+import { filterBooks, searchBooks, sortBooks } from '../utils/book-filters.js';
 import { icon } from '../utils/icons.js';
 import {
   renderCoverMarkup,
   hydrateCoverUrls,
   revokeFallbackCoverUrl,
   getBookCoverUrl,
+  getFormatBadge,
 } from '../utils/cover-art.js';
 
 /**
  * @typedef {import('../storage/library-db.js').Book} Book
  */
 
-/** @type {'all'|'epub'|'mp3'} */
+/** @type {'all'|'epub'|'mp3'|'finished'} */
 let activeFilter = 'all';
+
+/** @type {string} */
+let searchQuery = '';
+
+const SORT_KEY = 'library-sort';
+/** @type {'recent'|'title'|'author'} */
+let sortBy = /** @type {any} */ (localStorage.getItem(SORT_KEY)) || 'recent';
 
 /**
  * @param {HTMLElement} container
@@ -26,8 +38,7 @@ let activeFilter = 'all';
  */
 export async function renderLibrary(container, { onOpenBook, onOpenSettings }) {
   const books = await getAllBooks();
-  const filtered = filterBooks(books, activeFilter);
-  const continueBook = books[0] ?? null;
+  const continueBook = books.find((b) => !b.finishedAt) ?? null;
   const recentBooks = [...books]
     .sort((a, b) => b.addedAt - a.addedAt)
     .slice(0, 8);
@@ -40,7 +51,7 @@ export async function renderLibrary(container, { onOpenBook, onOpenSettings }) {
           <button class="icon-btn-touch" id="settings-btn" type="button" aria-label="Settings">${icon('settings')}</button>
           <label class="import-btn primary-btn">
             ${icon('add', 20)} Add Books
-            <input type="file" id="import-input" accept=".mp3,audio/mpeg,.epub,application/epub+zip" multiple class="visually-hidden">
+            <input type="file" id="import-input" accept=".mp3,.m4b,.m4a,audio/mpeg,audio/mp4,audio/x-m4a,audio/x-m4b,.epub,application/epub+zip" multiple class="visually-hidden">
           </label>
         </div>
       </header>
@@ -52,7 +63,20 @@ export async function renderLibrary(container, { onOpenBook, onOpenSettings }) {
       <div class="filter-tabs" role="tablist">
         ${renderFilterTab('all', 'All', activeFilter)}
         ${renderFilterTab('epub', 'EPUB', activeFilter)}
-        ${renderFilterTab('mp3', 'MP3', activeFilter)}
+        ${renderFilterTab('mp3', 'Audio', activeFilter)}
+        ${renderFilterTab('finished', 'Finished', activeFilter)}
+      </div>
+
+      <div class="library-toolbar">
+        <div class="search-box">
+          ${icon('search', 18)}
+          <input type="search" id="search-input" placeholder="Search title or author" value="${escapeAttr(searchQuery)}" aria-label="Search library">
+        </div>
+        <select id="sort-select" aria-label="Sort library">
+          <option value="recent" ${sortBy === 'recent' ? 'selected' : ''}>Recent</option>
+          <option value="title" ${sortBy === 'title' ? 'selected' : ''}>Title</option>
+          <option value="author" ${sortBy === 'author' ? 'selected' : ''}>Author</option>
+        </select>
       </div>
 
       ${continueBook ? renderContinueRow(continueBook) : ''}
@@ -61,17 +85,89 @@ export async function renderLibrary(container, { onOpenBook, onOpenSettings }) {
 
       <section class="library-section">
         <h2 class="section-heading">Your Library</h2>
-        ${filtered.length ? renderBookGrid(filtered) : renderEmptyState(activeFilter)}
+        <div id="library-books"></div>
       </section>
 
       ${isIOS() ? '<p class="storage-notice">Books are stored in this browser. Safari may free space if storage is low.</p>' : ''}
     </div>
   `;
 
-  await hydrateCoverUrls(filtered);
-  patchCoversInDom(container, [...filtered, ...(continueBook ? [continueBook] : []), ...recentBooks]);
+  const booksArea = container.querySelector('#library-books');
+
+  async function renderBooksArea() {
+    const visible = sortBooks(
+      searchBooks(filterBooks(books, activeFilter), searchQuery),
+      sortBy,
+    );
+    booksArea.innerHTML = visible.length
+      ? renderBookGrid(visible)
+      : renderEmptyState(activeFilter, searchQuery);
+
+    await hydrateCoverUrls(visible);
+    patchCoversInDom(booksArea, visible);
+
+    booksArea.querySelectorAll('[data-book-id]').forEach((el) => {
+      el.addEventListener('click', (e) => {
+        if (e.target.closest('.book-menu-btn')) return;
+        const id = el.getAttribute('data-book-id');
+        const book = visible.find((b) => b.id === id);
+        if (book) onOpenBook(book);
+      });
+    });
+
+    booksArea.querySelectorAll('.book-menu-btn').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const menu = btn.nextElementSibling;
+        const open = menu?.classList.contains('book-menu--open');
+        container.querySelectorAll('.book-menu--open').forEach((m) => m.classList.remove('book-menu--open'));
+        if (!open) menu?.classList.add('book-menu--open');
+      });
+    });
+
+    booksArea.querySelectorAll('[data-finish-id]').forEach((btn) => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const id = btn.getAttribute('data-finish-id');
+        const book = visible.find((b) => b.id === id);
+        if (!book) return;
+        await updateBook(id, { finishedAt: book.finishedAt ? null : Date.now() });
+        showToast(book.finishedAt ? 'Marked as unfinished' : 'Marked as finished', 'info');
+        await renderLibrary(container, { onOpenBook, onOpenSettings });
+      });
+    });
+
+    booksArea.querySelectorAll('[data-delete-id]').forEach((btn) => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const id = btn.getAttribute('data-delete-id');
+        if (!id) return;
+        if (!confirm('Remove this book from your library?')) return;
+        await clearBookCache(id);
+        revokeFallbackCoverUrl(id);
+        await deleteBook(id);
+        showToast('Book removed', 'info');
+        await renderLibrary(container, { onOpenBook, onOpenSettings });
+      });
+    });
+  }
+
+  await renderBooksArea();
+  await hydrateCoverUrls([...(continueBook ? [continueBook] : []), ...recentBooks]);
+  patchCoversInDom(container, [...(continueBook ? [continueBook] : []), ...recentBooks]);
 
   container.querySelector('#settings-btn').addEventListener('click', onOpenSettings);
+
+  container.querySelector('#search-input').addEventListener('input', (e) => {
+    searchQuery = e.target.value;
+    renderBooksArea();
+  });
+
+  container.querySelector('#sort-select').addEventListener('change', (e) => {
+    sortBy = e.target.value;
+    localStorage.setItem(SORT_KEY, sortBy);
+    renderBooksArea();
+  });
 
   container.querySelectorAll('.filter-tab').forEach((tab) => {
     tab.addEventListener('click', async () => {
@@ -89,9 +185,18 @@ export async function renderLibrary(container, { onOpenBook, onOpenSettings }) {
     statusEl.hidden = false;
     statusEl.textContent = `Importing 0 of ${files.length}…`;
 
-    const result = await importBooks(files, (current, total, name) => {
-      statusEl.textContent = `Importing ${current} of ${total}: ${name}`;
-    });
+    let result;
+    try {
+      result = await importBooks(files, (current, total, name) => {
+        statusEl.textContent = `Importing ${current} of ${total}: ${name}`;
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      statusEl.textContent = `Import failed: ${msg}`;
+      showToast(`Import failed: ${msg}`, 'error', 6000);
+      input.value = '';
+      return;
+    }
 
     input.value = '';
 
@@ -107,44 +212,12 @@ export async function renderLibrary(container, { onOpenBook, onOpenSettings }) {
       result.failed.forEach((f) => showToast(`${f.name}: ${f.error}`, 'error', 6000));
     }
 
+    if (result.added.length) {
+      // Ask the browser to protect the library from storage eviction.
+      requestPersistentStorage();
+    }
+
     await renderLibrary(container, { onOpenBook, onOpenSettings });
-  });
-
-  container.querySelectorAll('[data-book-id]').forEach((el) => {
-    el.addEventListener('click', (e) => {
-      if (e.target.closest('.book-menu-btn')) return;
-      const id = el.getAttribute('data-book-id');
-      const book = filtered.find((b) => b.id === id);
-      if (book) onOpenBook(book);
-    });
-  });
-
-  container.querySelectorAll('.book-menu-btn').forEach((btn) => {
-    btn.addEventListener('click', async (e) => {
-      e.stopPropagation();
-      const id = btn.getAttribute('data-book-id');
-      const book = filtered.find((b) => b.id === id);
-      if (!book) return;
-
-      const menu = btn.nextElementSibling;
-      const open = menu?.classList.contains('book-menu--open');
-      container.querySelectorAll('.book-menu--open').forEach((m) => m.classList.remove('book-menu--open'));
-      if (!open) menu?.classList.add('book-menu--open');
-    });
-  });
-
-  container.querySelectorAll('[data-delete-id]').forEach((btn) => {
-    btn.addEventListener('click', async (e) => {
-      e.stopPropagation();
-      const id = btn.getAttribute('data-delete-id');
-      if (!id) return;
-      if (!confirm('Remove this book from your library?')) return;
-      await clearBookCache(id);
-      revokeFallbackCoverUrl(id);
-      await deleteBook(id);
-      showToast('Book removed', 'info');
-      await renderLibrary(container, { onOpenBook, onOpenSettings });
-    });
   });
 
   document.addEventListener('click', closeMenusOnOutsideClick, { once: true });
@@ -171,23 +244,15 @@ function closeMenusOnOutsideClick(e) {
 }
 
 /**
- * @param {'all'|'epub'|'mp3'} filter
+ * @param {'all'|'epub'|'mp3'|'finished'} filter
  * @param {string} label
- * @param {'all'|'epub'|'mp3'} active
+ * @param {'all'|'epub'|'mp3'|'finished'} active
  */
 function renderFilterTab(filter, label, active) {
   const selected = filter === active;
   return `<button class="filter-tab ${selected ? 'filter-tab--active' : ''}" data-filter="${filter}" role="tab" aria-selected="${selected}">${label}</button>`;
 }
 
-/**
- * @param {Book[]} books
- * @param {'all'|'epub'|'mp3'} filter
- */
-function filterBooks(books, filter) {
-  if (filter === 'all') return books;
-  return books.filter((b) => b.type === filter);
-}
 
 /**
  * @param {Book} book
@@ -251,7 +316,7 @@ function renderBookGrid(books) {
  * @param {Book} book
  */
 function renderBookCard(book) {
-  const badge = book.type === 'mp3' ? 'MP3' : 'EPUB';
+  const badge = getFormatBadge(book);
 
   return `
     <div class="book-card-wrap">
@@ -266,6 +331,7 @@ function renderBookCard(book) {
       <div class="book-card-menu">
         <button class="book-menu-btn icon-btn-touch" data-book-id="${book.id}" type="button" aria-label="Book options">${icon('more')}</button>
         <div class="book-menu">
+          <button type="button" data-finish-id="${book.id}">${icon('check', 18)} ${book.finishedAt ? 'Mark unfinished' : 'Mark finished'}</button>
           <button type="button" data-delete-id="${book.id}">${icon('trash', 18)} Remove</button>
         </div>
       </div>
@@ -274,14 +340,31 @@ function renderBookCard(book) {
 }
 
 /**
- * @param {'all'|'epub'|'mp3'} filter
+ * @param {'all'|'epub'|'mp3'|'finished'} filter
+ * @param {string} [query]
  */
-function renderEmptyState(filter) {
-  const typeHint = filter === 'epub' ? 'EPUB' : filter === 'mp3' ? 'MP3' : 'MP3 or EPUB';
+function renderEmptyState(filter, query = '') {
+  if (query.trim()) {
+    return `
+      <div class="empty-state">
+        <p>No matches for “${escapeHtml(query.trim())}”.</p>
+      </div>
+    `;
+  }
+  if (filter === 'finished') {
+    return `
+      <div class="empty-state">
+        <p>No finished books yet.</p>
+        <p class="empty-hint">Books land here when you finish them, or use the ··· menu on a book to mark it finished.</p>
+      </div>
+    `;
+  }
+  const label = filter === 'all' ? 'books' : filter === 'mp3' ? 'audio files' : 'EPUB books';
+  const typeHint = filter === 'epub' ? 'EPUB' : filter === 'mp3' ? 'audio' : 'audio or EPUB';
   return `
     <div class="empty-state">
-      <p>No ${filter === 'all' ? 'books' : filter.toUpperCase() + ' books'} yet.</p>
-      <p class="empty-hint">Tap <strong>Add Books</strong>, then in the Files app choose <strong>On My iPhone</strong> and select ${typeHint} files. You can select multiple EPUBs at once.</p>
+      <p>No ${label} yet.</p>
+      <p class="empty-hint">Tap <strong>Add Books</strong>, then in the Files app choose <strong>On My iPhone</strong> and select ${typeHint} files. You can select multiple books at once.</p>
     </div>
   `;
 }
@@ -309,13 +392,12 @@ function patchCoversInDom(container, books) {
   }
 }
 
-function isIOS() {
-  return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-}
-
 function escapeHtml(text) {
   const div = document.createElement('div');
   div.textContent = text;
   return div.innerHTML;
+}
+
+function escapeAttr(text) {
+  return escapeHtml(text).replace(/"/g, '&quot;');
 }

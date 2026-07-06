@@ -1,14 +1,16 @@
 # Personal Audiobook Library
 
-A client-side web app for personal use: play local MP3 audiobooks, import EPUB ebooks, and listen via built-in or AI text-to-speech. Inspired by Audible's library layout — no accounts, no cloud, all data stays in your browser.
+A client-side web app for personal use: play local audiobooks (MP3/M4B/M4A), import EPUB ebooks, and listen via built-in or AI text-to-speech. Inspired by Audible's library layout — no accounts, no cloud, all data stays in your browser.
 
 ## Features
 
-- **Library home** — grid of covers, "Continue Listening" row, MP3/EPUB format badges
-- **MP3 playback** — ID3 metadata, play/pause, seek, ±15s skip, progress saved to IndexedDB
-- **EPUB listen mode** — extracts text from spine chapters, reads aloud via Web Speech or OpenAI TTS
-- **AI narrator (optional)** — OpenAI TTS with local dev proxy and IndexedDB audio chunk cache
-- **Persistent library** — books stored in IndexedDB (files + covers + progress)
+- **Library home** — grid of covers, "Continue Listening" row, search and sort, format badges
+- **Audio playback** — MP3/M4B/M4A with tag metadata, play/pause, seek, ±15s skip, sleep timer, progress saved to IndexedDB
+- **EPUB listen mode** — extracts text from spine chapters, reads aloud via Web Speech or OpenAI TTS, chapter picker with real TOC titles, continuous chapter playback, sleep timer (incl. end-of-chapter)
+- **AI narrator (optional)** — OpenAI TTS with local dev proxy, IndexedDB audio chunk cache, and next-chunk prefetch for gapless playback
+- **Lock-screen controls** — Media Session metadata with cover art, play/pause/skip from the lock screen
+- **Offline PWA** — service worker precaches the app shell; the app opens and plays your library with no connection
+- **Persistent library** — books stored in IndexedDB (files + covers + progress), with persistent-storage protection requested on import
 
 ## Tech Stack
 
@@ -25,7 +27,7 @@ Node.js is required. If you use **WSL**, run these commands from your Linux shel
 
 ```bash
 source ~/.nvm/nvm.sh   # if using nvm
-cd /mnt/c/Users/pauls/Documents/projects/Audiobook_WebApp
+cd ~/Projects/Audiobook-player
 npm install
 npm run dev
 ```
@@ -65,8 +67,8 @@ Re-importing the same file is skipped automatically (matched by filename and siz
 
 ### Desktop
 
-1. Click **Add Books** and select `.mp3` or `.epub` files (multiple allowed).
-2. MP3 opens the audio player; EPUB opens listen mode.
+1. Click **Add Books** and select `.mp3`, `.m4b`, `.m4a`, or `.epub` files (multiple allowed).
+2. Audio files open the audio player; EPUB opens listen mode.
 3. For EPUB: tap **Listen** to start Web Speech narration.
 4. Use **Settings** to switch to OpenAI TTS for higher-quality voices.
 5. Use the **···** menu on a book card to remove it from the library.

@@ -49,6 +49,30 @@ export async function setCachedAudio(key, blob, bookId) {
 }
 
 /**
+ * Cached-audio size and chunk count per book, largest first.
+ * @returns {Promise<{ bookId: string, bytes: number, count: number }[]>}
+ */
+export async function getCacheStats() {
+  const db = await getDb();
+  const byBook = new Map();
+  let cursor = await db.transaction(STORE).store.openCursor();
+  while (cursor) {
+    const { blob, bookId } = cursor.value;
+    const entry = byBook.get(bookId) ?? { bookId, bytes: 0, count: 0 };
+    entry.bytes += blob?.size ?? 0;
+    entry.count += 1;
+    byBook.set(bookId, entry);
+    cursor = await cursor.continue();
+  }
+  return [...byBook.values()].sort((a, b) => b.bytes - a.bytes);
+}
+
+export async function clearAllCache() {
+  const db = await getDb();
+  await db.clear(STORE);
+}
+
+/**
  * @param {string} bookId
  */
 export async function clearBookCache(bookId) {

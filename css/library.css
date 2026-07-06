@@ -342,3 +342,46 @@
         font-size: 2rem;
     }
 }
+
+.library-toolbar {
+    display: flex;
+    gap: 8px;
+    margin: 8px 0 16px;
+    align-items: center;
+}
+
+.search-box {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    background: var(--surface-color);
+    border-radius: 999px;
+    padding: 0 14px;
+    color: var(--text-secondary);
+    min-height: 44px;
+}
+
+.search-box input {
+    flex: 1;
+    background: none;
+    border: none;
+    outline: none;
+    color: var(--text-color);
+    font-size: 0.95rem;
+    min-width: 0;
+}
+
+.search-box input::placeholder {
+    color: var(--text-secondary);
+}
+
+#sort-select {
+    background: var(--surface-color);
+    color: var(--text-secondary);
+    border: none;
+    border-radius: 999px;
+    padding: 0 14px;
+    min-height: 44px;
+    font-size: 0.9rem;
+}

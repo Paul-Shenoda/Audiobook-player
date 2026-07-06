@@ -3,12 +3,24 @@ import { formatTime } from '../utils/format-time.js';
 import { createManagedObjectUrl, revokeManagedObjectUrl } from '../utils/object-url.js';
 import { updateBook } from '../storage/library-db.js';
 import { playbackManager } from '../services/playback-manager.js';
+import {
+  initMediaSession,
+  setMediaPlaybackState,
+  setMediaPositionState,
+  teardownMediaSession,
+} from '../services/media-session.js';
+import { createSleepTimer } from '../services/sleep-timer.js';
 import { icon } from '../utils/icons.js';
 import { renderCoverMarkup, getBookCoverUrl } from '../utils/cover-art.js';
 
 /**
  * @typedef {import('../storage/library-db.js').Book} Book
  */
+
+// Smart resume: rewind a little so the listener regains context.
+const RESTORE_REWIND_S = 10; // when reopening a book
+const PAUSE_REWIND_S = 15; // when resuming after a long in-session pause
+const LONG_PAUSE_MS = 5 * 60 * 1000;
 
 /**
  * @param {HTMLElement} container
@@ -44,6 +56,7 @@ export function renderMp3Player(container, book, { onBack, keepPlaybackOnBack = 
           <button class="play-btn icon-btn-touch" id="play-pause-btn" type="button" aria-label="Play or pause">${icon('play', 32)}</button>
           <button class="skip-btn icon-btn-touch" id="forward-btn" type="button" aria-label="Forward 15 seconds"><span>15s</span>${icon('forward')}</button>
         </div>
+        <button class="sleep-btn" id="sleep-btn" type="button" aria-label="Sleep timer">${icon('moon', 18)}<span id="sleep-label">Sleep: Off</span></button>
       </div>
     </div>
   `;
@@ -61,7 +74,7 @@ export function renderMp3Player(container, book, { onBack, keepPlaybackOnBack = 
   player.src = fileURL;
 
   if (book.progress?.seconds) {
-    player.currentTime = book.progress.seconds;
+    player.currentTime = Math.max(0, book.progress.seconds - RESTORE_REWIND_S);
   }
 
   jsmediatags.read(book.fileBlob, {
@@ -85,33 +98,82 @@ export function renderMp3Player(container, book, { onBack, keepPlaybackOnBack = 
     playBtn.innerHTML = playing ? icon('pause', 32) : icon('play', 32);
   }
 
-  playBtn.addEventListener('click', () => {
-    if (player.paused) {
-      player.play().catch(() => setPlayIcon(false));
-      setPlayIcon(true);
-      playbackManager.setPlaying(true);
-    } else {
-      player.pause();
-      setPlayIcon(false);
-      playbackManager.setPaused(true);
+  /** @type {number|null} */
+  let pausedAt = null;
+
+  function play() {
+    if (pausedAt && Date.now() - pausedAt > LONG_PAUSE_MS) {
+      player.currentTime = Math.max(0, player.currentTime - PAUSE_REWIND_S);
     }
-  });
+    pausedAt = null;
+    player.play().catch(() => setPlayIcon(false));
+    setPlayIcon(true);
+    playbackManager.setPlaying(true);
+  }
 
-  container.querySelector('#rewind-btn').addEventListener('click', () => {
+  function pause() {
+    pausedAt = Date.now();
+    player.pause();
+    setPlayIcon(false);
+    playbackManager.setPaused(true);
+  }
+
+  function skipBack() {
     player.currentTime = Math.max(0, player.currentTime - 15);
-  });
+  }
 
-  container.querySelector('#forward-btn').addEventListener('click', () => {
+  function skipForward() {
     if (player.duration) {
       player.currentTime = Math.min(player.duration, player.currentTime + 15);
     }
+  }
+
+  playBtn.addEventListener('click', () => {
+    if (player.paused) {
+      play();
+    } else {
+      pause();
+    }
   });
+
+  const sleepBtn = container.querySelector('#sleep-btn');
+  const sleepLabel = container.querySelector('#sleep-label');
+  const sleepTimer = createSleepTimer({
+    modes: ['off', '15', '30', '60'],
+    onExpire: pause,
+    onTick: (text) => {
+      sleepLabel.textContent = text;
+      sleepBtn.classList.toggle('sleep-btn--active', sleepTimer.getMode() !== 'off');
+    },
+  });
+  sleepBtn.addEventListener('click', () => sleepTimer.cycle());
+
+  container.querySelector('#rewind-btn').addEventListener('click', skipBack);
+  container.querySelector('#forward-btn').addEventListener('click', skipForward);
+
+  initMediaSession(book, {
+    onPlay: play,
+    onPause: pause,
+    onSeekBackward: skipBack,
+    onSeekForward: skipForward,
+    onSeekTo: (seconds) => {
+      player.currentTime = seconds;
+    },
+  });
+
+  player.addEventListener('play', () => setMediaPlaybackState('playing'));
+  player.addEventListener('pause', () => setMediaPlaybackState('paused'));
 
   player.addEventListener('timeupdate', () => {
     if (!player.duration) return;
     seekBar.value = String((player.currentTime / player.duration) * 100);
     currentTimeText.textContent = formatTime(player.currentTime);
     durationText.textContent = formatTime(player.duration);
+    setMediaPositionState({
+      duration: player.duration,
+      position: player.currentTime,
+      playbackRate: player.playbackRate,
+    });
   });
 
   seekBar.addEventListener('input', () => {
@@ -123,6 +185,7 @@ export function renderMp3Player(container, book, { onBack, keepPlaybackOnBack = 
     setPlayIcon(false);
     seekBar.value = '0';
     playbackManager.setPaused(true);
+    updateBook(book.id, { finishedAt: Date.now() });
   });
 
   let saveTimer = null;
@@ -148,9 +211,11 @@ export function renderMp3Player(container, book, { onBack, keepPlaybackOnBack = 
     clearTimeout(saveTimer);
     saveProgress();
     if (!keepPlayback) {
+      sleepTimer.destroy();
       player.pause();
       revokeManagedObjectUrl();
       playbackManager.audio = null;
+      teardownMediaSession();
     }
     if (coverUrl && !book.coverBlob) {
       // fallback url managed by cover-art cache

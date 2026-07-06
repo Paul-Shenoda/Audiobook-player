@@ -23,6 +23,7 @@ const BOOKS_STORE = 'books';
  * @property {number} [sourceFileSize]
  * @property {number} addedAt
  * @property {number} lastOpenedAt
+ * @property {number|null} [finishedAt] set when the book is completed
  * @property {BookProgress} progress
  */
 

@@ -48,7 +48,33 @@ export async function importSingleFile(file, existing) {
     return importEpub(file);
   }
 
-  return importMp3(file);
+  if (!isAudioFile(file)) {
+    throw new Error('Unsupported file type — use MP3, M4B, M4A, or EPUB');
+  }
+
+  return importAudio(file);
+}
+
+const AUDIO_EXT_RE = /\.(mp3|m4b|m4a|aac|wav|ogg|opus|flac)$/i;
+
+/**
+ * @param {File} file
+ */
+export function isAudioFile(file) {
+  return AUDIO_EXT_RE.test(file.name) || file.type.startsWith('audio/');
+}
+
+/**
+ * Convert a jsmediatags picture (ID3 APIC / MP4 covr) to a Blob.
+ * @param {{ format?: string, data?: number[] }|undefined} picture
+ * @returns {Blob|null}
+ */
+export function pictureToBlob(picture) {
+  if (!picture?.data?.length) return null;
+  let type = picture.format || 'image/jpeg';
+  if (type === 'image/jpg') type = 'image/jpeg';
+  if (!type.startsWith('image/')) type = `image/${type}`;
+  return new Blob([new Uint8Array(picture.data)], { type });
 }
 
 /**
@@ -90,17 +116,22 @@ export async function importBooks(files, onProgress) {
 }
 
 /**
+ * MP3/M4B/M4A import — jsmediatags reads both ID3 and MP4 metadata.
+ * Stored as type 'mp3' (the app's generic audio type).
  * @param {File} file
  */
-async function importMp3(file) {
-  let title = file.name.replace(/\.mp3$/i, '');
+async function importAudio(file) {
+  let title = file.name.replace(AUDIO_EXT_RE, '');
   let author = 'Unknown Artist';
+  /** @type {Blob|null} */
+  let coverBlob = null;
 
   await new Promise((resolve) => {
     jsmediatags.read(file, {
       onSuccess(tag) {
         title = tag.tags.title || title;
         author = tag.tags.artist || author;
+        coverBlob = pictureToBlob(tag.tags.picture);
         resolve();
       },
       onError() {
@@ -109,7 +140,9 @@ async function importMp3(file) {
     });
   });
 
-  const coverBlob = await generateFallbackCover(title, author);
+  if (!coverBlob) {
+    coverBlob = await generateFallbackCover(title, author);
+  }
 
   return addBook({
     type: 'mp3',
@@ -128,8 +161,12 @@ async function importMp3(file) {
 async function importEpub(file) {
   const arrayBuffer = await file.arrayBuffer();
   const { book, metadata } = await openEpub(arrayBuffer);
-  let coverBlob = await extractCoverBlob(book, metadata.coverUrl);
-  destroyEpub(book);
+  let coverBlob;
+  try {
+    coverBlob = await extractCoverBlob(book, metadata.coverUrl);
+  } finally {
+    destroyEpub(book);
+  }
 
   if (!coverBlob) {
     coverBlob = await generateFallbackCover(metadata.title, metadata.author);

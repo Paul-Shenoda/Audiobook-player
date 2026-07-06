@@ -1,4 +1,6 @@
+import { registerSW } from 'virtual:pwa-register';
 import { renderLibrary } from './views/library.js';
+import { showToast } from './utils/toast.js';
 import { renderMp3Player } from './views/mp3-player.js';
 import { renderEpubListen } from './views/epub-listen.js';
 import { renderSettings } from './views/settings.js';
@@ -95,3 +97,15 @@ function runCleanup(options = {}) {
 }
 
 showLibrary();
+
+const updateSW = registerSW({
+  onOfflineReady() {
+    showToast('App ready to work offline', 'success');
+  },
+  onNeedRefresh() {
+    showToast('A new version is available', 'info', 15000, {
+      label: 'Refresh',
+      onClick: () => updateSW(true),
+    });
+  },
+});

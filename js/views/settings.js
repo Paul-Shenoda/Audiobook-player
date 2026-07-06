@@ -1,5 +1,11 @@
 import { loadTTSSettings, saveTTSSettings, defaultSettings, TTSRouter } from '../tts/tts-router.js';
+import { getStorageInfo, requestPersistentStorage, formatBytes } from '../utils/storage-persist.js';
+import { clearBookCache, clearAllCache, getCacheStats } from '../tts/chunk-cache.js';
+import { getAllBooks } from '../storage/library-db.js';
 import { icon } from '../utils/icons.js';
+
+const PREVIEW_BOOK_ID = 'voice-preview';
+const PREVIEW_TEXT = 'This is a preview of the selected voice reading your audiobook.';
 
 /**
  * @param {HTMLElement} container
@@ -26,7 +32,10 @@ export async function renderSettings(container, { onBack }) {
         </label>
         <label>
           Voice
-          <select id="voice-select"></select>
+          <div class="voice-row">
+            <select id="voice-select"></select>
+            <button type="button" class="preview-btn" id="preview-btn">Preview</button>
+          </div>
         </label>
         <label>
           Speed
@@ -47,6 +56,11 @@ export async function renderSettings(container, { onBack }) {
         <button type="submit" class="primary-btn">Save Settings</button>
       </form>
       <p class="settings-note" id="save-status"></p>
+      <p class="settings-note" id="storage-info">Checking storage…</p>
+      <section class="cache-section">
+        <h2>AI audio cache</h2>
+        <div id="cache-list"><p class="settings-note">Checking cache…</p></div>
+      </section>
     </div>
   `;
 
@@ -66,6 +80,7 @@ export async function renderSettings(container, { onBack }) {
 
   providerSelect.addEventListener('change', async () => {
     openaiFields.hidden = providerSelect.value !== 'openai';
+    stopPreview();
     await populateVoices();
   });
 
@@ -73,7 +88,45 @@ export async function renderSettings(container, { onBack }) {
     rateValue.textContent = `${rateSlider.value}x`;
   });
 
-  container.querySelector('#back-btn').addEventListener('click', onBack);
+  container.querySelector('#back-btn').addEventListener('click', () => {
+    stopPreview();
+    clearBookCache(PREVIEW_BOOK_ID);
+    onBack();
+  });
+
+  const previewBtn = container.querySelector('#preview-btn');
+  let previewing = false;
+
+  function stopPreview() {
+    router.stop();
+    previewing = false;
+    previewBtn.textContent = 'Preview';
+  }
+
+  previewBtn.addEventListener('click', async () => {
+    if (previewing) {
+      stopPreview();
+      return;
+    }
+
+    router.configure({
+      ...defaultSettings(),
+      providerId: providerSelect.value,
+      voiceId: voiceSelect.value,
+      rate: Number(rateSlider.value),
+      apiKey: apiKeyInput.value.trim(),
+      proxyUrl: proxyUrlInput.value.trim() || '/api/tts',
+    });
+
+    previewing = true;
+    previewBtn.textContent = 'Stop';
+    router.onComplete = stopPreview;
+    router.onError = (err) => {
+      stopPreview();
+      saveStatus.textContent = `Preview failed: ${err.message}`;
+    };
+    await router.speak([PREVIEW_TEXT], 0, { bookId: PREVIEW_BOOK_ID, chapterIndex: 0 });
+  });
 
   container.querySelector('#settings-form').addEventListener('submit', (e) => {
     e.preventDefault();
@@ -118,6 +171,77 @@ export async function renderSettings(container, { onBack }) {
     speechSynthesis.onvoiceschanged = () => populateVoices();
   }
   await populateVoices();
+  await showStorageInfo(container.querySelector('#storage-info'));
+  await renderCacheSection(container.querySelector('#cache-list'));
+
+  async function renderCacheSection(el) {
+    const stats = await getCacheStats();
+    if (!stats.length) {
+      el.innerHTML = '<p class="settings-note">No cached AI audio.</p>';
+      return;
+    }
+
+    const books = await getAllBooks();
+    const titles = new Map(books.map((b) => [b.id, b.title]));
+    const titleFor = (id) =>
+      titles.get(id) ?? (id === PREVIEW_BOOK_ID ? 'Voice previews' : 'Removed book');
+    const total = stats.reduce((sum, s) => sum + s.bytes, 0);
+
+    el.innerHTML = `
+      ${stats
+        .map(
+          (s) => `
+        <div class="cache-row">
+          <span class="cache-title">${escapeHtml(titleFor(s.bookId))}</span>
+          <span class="cache-size">${formatBytes(s.bytes)}</span>
+          <button type="button" class="cache-clear-btn" data-clear-cache="${escapeAttr(s.bookId)}">Clear</button>
+        </div>`,
+        )
+        .join('')}
+      <div class="cache-row cache-row--total">
+        <span class="cache-title">Total</span>
+        <span class="cache-size">${formatBytes(total)}</span>
+        <button type="button" class="cache-clear-btn" id="clear-all-cache">Clear all</button>
+      </div>
+    `;
+
+    el.querySelectorAll('[data-clear-cache]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        await clearBookCache(btn.getAttribute('data-clear-cache'));
+        await renderCacheSection(el);
+      });
+    });
+
+    el.querySelector('#clear-all-cache').addEventListener('click', async () => {
+      if (!confirm('Clear all cached AI audio? It will be re-generated (and re-billed) on next listen.')) return;
+      await clearAllCache();
+      await renderCacheSection(el);
+    });
+  }
+}
+
+/**
+ * @param {HTMLElement} el
+ */
+async function showStorageInfo(el) {
+  // Re-request each visit: browsers may grant persistence only after the
+  // app is installed to the home screen or used more.
+  await requestPersistentStorage();
+  const { usage, quota, persisted } = await getStorageInfo();
+
+  if (usage == null && persisted == null) {
+    el.textContent = 'Storage details unavailable in this browser.';
+    return;
+  }
+
+  const usageText = quota != null
+    ? `Storage: ${formatBytes(usage)} used of ${formatBytes(quota)} available.`
+    : `Storage: ${formatBytes(usage)} used.`;
+  const persistText = persisted
+    ? 'Your library is protected from automatic deletion.'
+    : 'The browser may clear your library if the device runs low on space — keep original files backed up.';
+
+  el.textContent = `${usageText} ${persistText}`;
 }
 
 function escapeHtml(text) {

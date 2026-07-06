@@ -65,6 +65,21 @@ body {
 .app-toast--visible {
     opacity: 1;
     transform: translateX(-50%) translateY(0);
+    pointer-events: auto;
+}
+
+.app-toast-action {
+    margin-left: 12px;
+    padding: 6px 14px;
+    border-radius: 999px;
+    background: var(--primary-color);
+    color: #1a1206;
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+.app-toast-action:hover {
+    background: var(--primary-hover);
 }
 
 .app-toast--success {
@@ -274,10 +289,87 @@ input[type="range"] {
     color: var(--text-secondary);
 }
 
+.voice-row {
+    display: flex;
+    gap: 8px;
+}
+
+.voice-row select {
+    flex: 1;
+    min-width: 0;
+}
+
+.preview-btn {
+    padding: 10px 16px;
+    border-radius: 8px;
+    background: var(--surface-color);
+    border: 1px solid var(--border-color);
+    color: var(--text-color);
+    font-size: 0.9rem;
+    white-space: nowrap;
+}
+
+.preview-btn:hover {
+    background: var(--border-color);
+}
+
 .settings-note {
     padding: 0 20px 24px;
     color: var(--text-secondary);
     font-size: 0.85rem;
+}
+
+.cache-section {
+    padding: 0 20px 24px;
+    max-width: 480px;
+}
+
+.cache-section h2 {
+    font-size: 0.95rem;
+    color: var(--text-color);
+    margin-bottom: 12px;
+}
+
+.cache-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 0;
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.cache-row--total {
+    border-bottom: none;
+    color: var(--text-color);
+    font-weight: 600;
+}
+
+.cache-title {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.cache-size {
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.cache-clear-btn {
+    padding: 6px 14px;
+    border-radius: 999px;
+    background: var(--surface-color);
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+}
+
+.cache-clear-btn:hover {
+    background: var(--border-color);
+    color: var(--text-color);
 }
 
 .openai-fields {

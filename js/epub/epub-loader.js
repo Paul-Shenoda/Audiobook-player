@@ -15,19 +15,19 @@ import { htmlToPlainText } from './text-extract.js';
  * @returns {Promise<{ book: import('epubjs').Book, metadata: EpubMetadata }>}
  */
 export async function openEpub(source) {
-  // Blob URL is more reliable than passing an ArrayBuffer directly to epubjs,
-  // especially in Vite-bundled environments. We attach it to the book so
-  // destroyEpub can revoke it when the book is no longer needed.
-  let url;
-  if (source instanceof ArrayBuffer) {
-    const blob = new Blob([source], { type: 'application/epub+zip' });
-    url = URL.createObjectURL(blob);
-  } else {
-    url = URL.createObjectURL(source);
+  // epubjs sniffs string inputs by file extension, so an extensionless blob
+  // URL is misread as a directory and book.ready never settles. Passing the
+  // raw ArrayBuffer forces archived (binary) mode.
+  const buffer =
+    source instanceof ArrayBuffer ? source : await source.arrayBuffer();
+  const book = ePub(buffer);
+
+  try {
+    await whenBookReady(book);
+  } catch (err) {
+    book.destroy();
+    throw err;
   }
-  const book = ePub(url);
-  book.__blobUrl = url;
-  await book.ready;
 
   const metadata = await book.loaded.metadata;
   const title = metadata.title || 'Untitled';
@@ -53,6 +53,38 @@ export async function openEpub(source) {
     book,
     metadata: { title, author, coverUrl, spineLength },
   };
+}
+
+const OPEN_TIMEOUT_MS = 30000;
+
+/**
+ * Wait for book.ready, but surface failures: epubjs never rejects its opening
+ * promise — it only emits "openFailed" — so a bad file would hang forever.
+ * @param {import('epubjs').Book} book
+ * @returns {Promise<void>}
+ */
+function whenBookReady(book) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error('Timed out opening EPUB — the file may be corrupt or DRM-protected'));
+    }, OPEN_TIMEOUT_MS);
+
+    book.on('openFailed', (err) => {
+      clearTimeout(timer);
+      reject(err instanceof Error ? err : new Error(String(err)));
+    });
+
+    Promise.resolve(book.ready).then(
+      () => {
+        clearTimeout(timer);
+        resolve();
+      },
+      (err) => {
+        clearTimeout(timer);
+        reject(err instanceof Error ? err : new Error(String(err)));
+      },
+    );
+  });
 }
 
 /**
@@ -165,38 +197,8 @@ export async function findFirstContentChapter(book) {
   }
   if (!toc.length) return 0;
 
-  // Flatten nested TOC into a single ordered list.
-  const flatToc = [];
-  function flatten(items) {
-    for (const item of items) {
-      flatToc.push(item);
-      if (item.subitems?.length) flatten(item.subitems);
-    }
-  }
-  flatten(toc);
-
-  // Build a map from normalised href → spine index so we can translate a TOC
-  // entry back to a spine position.
-  const spineItems = book.spine.items ?? [];
-  const hrefToIndex = new Map();
-  for (let i = 0; i < spineItems.length; i++) {
-    const raw = spineItems[i].href ?? '';
-    const norm = raw.split('#')[0];
-    hrefToIndex.set(norm.toLowerCase(), i);
-    // Also index by filename alone for loose matching.
-    const filename = norm.split('/').pop();
-    if (filename && !hrefToIndex.has(filename.toLowerCase())) {
-      hrefToIndex.set(filename.toLowerCase(), i);
-    }
-  }
-
-  function spineIndexForHref(href) {
-    const base = (href ?? '').split('#')[0];
-    const exact = hrefToIndex.get(base.toLowerCase());
-    if (exact !== undefined) return exact;
-    const byFile = hrefToIndex.get(base.split('/').pop().toLowerCase());
-    return byFile ?? -1;
-  }
+  const flatToc = flattenToc(toc);
+  const spineIndexForHref = buildSpineHrefResolver(book);
 
   for (const item of flatToc) {
     const label = (item.label ?? '').trim();
@@ -210,14 +212,97 @@ export async function findFirstContentChapter(book) {
 }
 
 /**
- * Destroy an open EPUB book instance and revoke any associated Blob URL.
+ * Flatten a nested TOC into a single ordered list.
+ * @param {Array} toc
+ */
+function flattenToc(toc) {
+  const flat = [];
+  function walk(items) {
+    for (const item of items) {
+      flat.push(item);
+      if (item.subitems?.length) walk(item.subitems);
+    }
+  }
+  walk(toc);
+  return flat;
+}
+
+/**
+ * Build a resolver from a TOC href to its spine index, matching by
+ * normalised path with a filename-only fallback.
+ * @param {import('epubjs').Book} book
+ * @returns {(href: string) => number} -1 when unmatched
+ */
+function buildSpineHrefResolver(book) {
+  const spineItems = book.spine.items ?? [];
+  const hrefToIndex = new Map();
+  for (let i = 0; i < spineItems.length; i++) {
+    const raw = spineItems[i].href ?? '';
+    const norm = raw.split('#')[0];
+    hrefToIndex.set(norm.toLowerCase(), i);
+    const filename = norm.split('/').pop();
+    if (filename && !hrefToIndex.has(filename.toLowerCase())) {
+      hrefToIndex.set(filename.toLowerCase(), i);
+    }
+  }
+
+  return function spineIndexForHref(href) {
+    const base = (href ?? '').split('#')[0];
+    const exact = hrefToIndex.get(base.toLowerCase());
+    if (exact !== undefined) return exact;
+    const byFile = hrefToIndex.get(base.split('/').pop().toLowerCase());
+    return byFile ?? -1;
+  };
+}
+
+/**
+ * @typedef {Object} ChapterEntry
+ * @property {number} spineIndex
+ * @property {string} label real TOC title when available, else "Chapter N"
+ */
+
+/**
+ * One entry per spine chapter, labelled from the navigation TOC where a
+ * matching entry exists.
+ * @param {import('epubjs').Book} book
+ * @returns {Promise<ChapterEntry[]>}
+ */
+export async function getChapterList(book) {
+  const spineItems = book.spine.items ?? [];
+  const chapters = spineItems.map((_, i) => ({
+    spineIndex: i,
+    label: `Chapter ${i + 1}`,
+    hasTocLabel: false,
+  }));
+
+  let toc = [];
+  try {
+    const nav = await book.loaded.navigation;
+    toc = nav?.toc ?? [];
+  } catch {
+    return chapters;
+  }
+
+  const spineIndexForHref = buildSpineHrefResolver(book);
+  for (const item of flattenToc(toc)) {
+    const label = (item.label ?? '').trim();
+    if (!label) continue;
+    const idx = spineIndexForHref(item.href);
+    if (idx >= 0 && !chapters[idx].hasTocLabel) {
+      chapters[idx].label = label;
+      chapters[idx].hasTocLabel = true;
+    }
+  }
+
+  return chapters;
+}
+
+/**
+ * Destroy an open EPUB book instance.
  * @param {import('epubjs').Book|null} book
  */
 export function destroyEpub(book) {
   if (book) {
-    if (book.__blobUrl) {
-      URL.revokeObjectURL(book.__blobUrl);
-    }
     book.destroy();
   }
 }
