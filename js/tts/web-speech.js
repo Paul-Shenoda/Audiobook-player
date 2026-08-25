@@ -1,3 +1,12 @@
+import { registerProviderMeta } from './provider-interface.js';
+
+registerProviderMeta({
+  id: 'web-speech',
+  name: 'Web Speech (built-in)',
+  tier: 'free',
+  description: 'Your device’s built-in voice. Always available, no setup.',
+});
+
 /**
  * Web Speech API TTS wrapper with play/pause/resume/stop.
  */

@@ -1,6 +1,7 @@
 import { WebSpeechTTS } from './web-speech.js';
 import { cacheKey, getCachedAudio, setCachedAudio } from './chunk-cache.js';
-import { createOpenAIProvider } from './openai-tts.js';
+import { getProviderFactory } from './provider-interface.js';
+import './openai-tts.js'; // side effect: registers its provider factory/metadata
 
 const SETTINGS_KEY = 'tts-settings';
 
@@ -78,10 +79,11 @@ export class TTSRouter {
   configure(settings) {
     this.settings = settings;
 
-    if (settings.providerId === 'openai') {
-      this.aiProvider = createOpenAIProvider(settings.proxyUrl, settings.apiKey);
-    } else {
+    if (settings.providerId === 'web-speech') {
       this.aiProvider = null;
+    } else {
+      const factory = getProviderFactory(settings.providerId);
+      this.aiProvider = factory ? factory(settings) : null;
     }
   }
 

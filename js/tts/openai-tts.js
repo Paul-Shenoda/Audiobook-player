@@ -1,3 +1,5 @@
+import { registerProviderMeta, registerTTSProviderFactory } from './provider-interface.js';
+
 /**
  * OpenAI TTS provider (via local proxy).
  * @param {string} proxyUrl
@@ -44,3 +46,28 @@ export function createOpenAIProvider(proxyUrl, apiKey) {
     },
   };
 }
+
+registerProviderMeta({
+  id: 'openai',
+  name: 'OpenAI TTS',
+  tier: 'byok',
+  description: 'AI narrator via OpenAI’s TTS API.',
+  configFields: [
+    {
+      key: 'apiKey',
+      label: 'OpenAI API Key',
+      type: 'password',
+      placeholder: 'sk-...',
+      help: 'Stored locally in your browser. Use a local proxy in production.',
+    },
+    {
+      key: 'proxyUrl',
+      label: 'Proxy URL',
+      type: 'text',
+    },
+  ],
+});
+
+registerTTSProviderFactory('openai', (settings) =>
+  createOpenAIProvider(settings.proxyUrl, settings.apiKey),
+);
