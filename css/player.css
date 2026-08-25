@@ -131,10 +131,10 @@
     margin: 16px 0 24px;
 }
 
-.progress-percent {
+.time-left-label {
     font-size: 0.85rem;
     color: var(--text-secondary);
-    min-width: 36px;
+    white-space: nowrap;
     font-weight: 500;
 }
 
@@ -237,6 +237,13 @@
 .chapter-picker-btn--active {
     color: var(--text-color);
     background: var(--surface-color);
+}
+
+.book-percent {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    font-variant-numeric: tabular-nums;
 }
 
 .read-along {

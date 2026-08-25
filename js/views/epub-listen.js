@@ -10,6 +10,7 @@ import {
   saveEpubProgress,
   loadEpubProgress,
   estimatePercent,
+  estimateSecondsRemaining,
 } from '../tts/playback-state.js';
 import { loadTTSSettings } from '../tts/tts-router.js';
 import { updateBook } from '../storage/library-db.js';
@@ -53,6 +54,7 @@ export async function renderEpubListen(container, book, { onBack, onOpenSettings
         </div>
         <div class="chapter-row">
           <button class="chapter-picker-btn" id="chapter-picker-btn" type="button" aria-label="Choose chapter">${icon('list', 18)}<span id="chapter-label">Chapter 1</span></button>
+          <span class="book-percent" id="book-percent" aria-label="Book progress">0%</span>
           <button class="chapter-picker-btn" id="text-toggle-btn" type="button" aria-label="Show or hide text">${icon('text', 18)}<span>Text</span></button>
         </div>
         <div class="read-along" id="read-along-panel" hidden></div>
@@ -60,12 +62,12 @@ export async function renderEpubListen(container, book, { onBack, onOpenSettings
           <div class="progress-bar-track">
             <div class="progress-bar-fill" id="listen-progress" style="width: 0%"></div>
           </div>
-          <span class="progress-percent" id="progress-percent">0%</span>
+          <span class="time-left-label" id="time-left-label">-- min left</span>
         </div>
         <div class="controls-section">
-          <button class="chapter-btn icon-btn-touch" id="prev-chapter-btn" type="button" aria-label="Previous chapter">${icon('prevChapter')}</button>
+          <button class="chapter-btn icon-btn-touch" id="skip-back-btn" type="button" aria-label="Skip back">${icon('rewind')}</button>
           <button class="play-btn listen-btn icon-btn-touch" id="listen-pause-btn" type="button" aria-label="Play or pause">${icon('play', 28)}<span>Listen</span></button>
-          <button class="chapter-btn icon-btn-touch" id="next-chapter-btn" type="button" aria-label="Next chapter">${icon('nextChapter')}</button>
+          <button class="chapter-btn icon-btn-touch" id="skip-forward-btn" type="button" aria-label="Skip forward">${icon('forward')}</button>
         </div>
         <div class="speed-control">
           <button class="speed-step-btn icon-btn-touch" id="speed-down-btn" type="button" aria-label="Decrease speed">−</button>
@@ -83,7 +85,8 @@ export async function renderEpubListen(container, book, { onBack, onOpenSettings
   const authorEl = container.querySelector('#epub-author');
   const chapterLabel = container.querySelector('#chapter-label');
   const progressFill = container.querySelector('#listen-progress');
-  const progressPercent = container.querySelector('#progress-percent');
+  const timeLeftLabel = container.querySelector('#time-left-label');
+  const bookPercentEl = container.querySelector('#book-percent');
   const statusText = container.querySelector('#status-text');
   const listenBtn = container.querySelector('#listen-pause-btn');
 
@@ -167,6 +170,7 @@ export async function renderEpubListen(container, book, { onBack, onOpenSettings
       currentRate = SPEED_STEPS[idx - 1];
       ttsRouter.setRate(currentRate);
       updateSpeedDisplay();
+      updateProgressDisplay(currentChunkIndex);
     }
   });
 
@@ -176,6 +180,7 @@ export async function renderEpubListen(container, book, { onBack, onOpenSettings
       currentRate = SPEED_STEPS[idx + 1];
       ttsRouter.setRate(currentRate);
       updateSpeedDisplay();
+      updateProgressDisplay(currentChunkIndex);
     }
   });
 
@@ -259,9 +264,33 @@ export async function renderEpubListen(container, book, { onBack, onOpenSettings
     }
   }
 
-  container.querySelector('#prev-chapter-btn').addEventListener('click', goPrevChapter);
-  container.querySelector('#next-chapter-btn').addEventListener('click', goNextChapter);
+  container.querySelector('#skip-back-btn').addEventListener('click', skipBack);
+  container.querySelector('#skip-forward-btn').addEventListener('click', skipForward);
   container.querySelector('#chapter-picker-btn').addEventListener('click', openChapterSheet);
+
+  /** Step back one text segment, rolling into the previous chapter's last segment at the start. */
+  async function skipBack() {
+    ttsRouter.stop();
+    if (currentChunkIndex > 0) {
+      await startListening(currentChunkIndex - 1);
+    } else if (chapterIndex > 0) {
+      chapterIndex -= 1;
+      await loadAndPrepareChapter();
+      await startListening(Math.max(chunks.length - 1, 0));
+    }
+  }
+
+  /** Step forward one text segment, rolling into the next chapter's first segment at the end. */
+  async function skipForward() {
+    ttsRouter.stop();
+    if (currentChunkIndex < chunks.length - 1) {
+      await startListening(currentChunkIndex + 1);
+    } else if (chapterIndex < totalChapters - 1) {
+      chapterIndex += 1;
+      await loadAndPrepareChapter();
+      await startListening(0);
+    }
+  }
 
   function openChapterSheet() {
     if (!chapterList.length) return;
@@ -448,14 +477,26 @@ export async function renderEpubListen(container, book, { onBack, onOpenSettings
   }
 
   function updateProgressDisplay(chunkIndex) {
-    const percent = estimatePercent(
+    const chapterPercent = chunks.length > 0
+      ? Math.min(100, Math.round((chunkIndex / chunks.length) * 100))
+      : 0;
+    progressFill.style.width = `${chapterPercent}%`;
+    timeLeftLabel.textContent = formatMinutesLeft(
+      estimateSecondsRemaining(chunks, chunkIndex, currentRate),
+    );
+
+    const bookPercent = estimatePercent(
       chapterIndex,
       totalChapters,
       chunkIndex,
       chunks.length,
     );
-    progressFill.style.width = `${percent}%`;
-    progressPercent.textContent = `${percent}%`;
+    bookPercentEl.textContent = `${bookPercent}%`;
+  }
+
+  function formatMinutesLeft(seconds) {
+    const minutes = Math.round(seconds / 60);
+    return minutes < 1 ? '< 1 min left' : `${minutes} min left`;
   }
 
   function persistProgress(chunkIndex) {
