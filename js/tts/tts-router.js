@@ -1,7 +1,11 @@
 import { WebSpeechTTS } from './web-speech.js';
 import { cacheKey, getCachedAudio, setCachedAudio } from './chunk-cache.js';
 import { getProviderFactory, TTSQuotaExceededError } from './provider-interface.js';
-import './openai-tts.js'; // side effect: registers its provider factory/metadata
+// Side-effect imports: each provider registers its own metadata/factory.
+import './openai-tts.js';
+import './elevenlabs-tts.js';
+import './google-tts.js';
+import './kokoro-tts.js';
 
 const SETTINGS_KEY = 'tts-settings';
 
