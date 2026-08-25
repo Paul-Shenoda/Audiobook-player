@@ -5,6 +5,7 @@ import { getStorageInfo, requestPersistentStorage, formatBytes } from '../utils/
 import { clearBookCache, clearAllCache, getCacheStats } from '../tts/chunk-cache.js';
 import { getAllBooks } from '../storage/library-db.js';
 import { icon } from '../utils/icons.js';
+import { unlockMediaForAutoplay } from '../utils/audio-unlock.js';
 
 const PREVIEW_BOOK_ID = 'voice-preview';
 const PREVIEW_TEXT = 'This is a preview of the selected voice reading your audiobook.';
@@ -103,6 +104,7 @@ export async function renderSettings(container, { onBack }) {
    */
   function wirePreviewButton(providerId, btn, getVoiceId, getProviderConfig = () => ({})) {
     btn.addEventListener('click', async () => {
+      unlockMediaForAutoplay();
       if (activePreviewBtn === btn) {
         stopPreview();
         return;
