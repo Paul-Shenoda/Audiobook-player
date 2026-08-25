@@ -97,11 +97,19 @@
 }
 
 .chapter-btn {
-    padding: 12px;
+    padding: 8px 12px;
     background-color: var(--surface-color);
-    border-radius: 50%;
+    border-radius: 12px;
     min-width: 48px;
     min-height: 48px;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.chapter-btn span {
+    font-size: 0.65rem;
+    font-weight: 500;
+    color: var(--text-secondary);
 }
 
 .play-btn {
@@ -132,6 +140,18 @@
     align-items: center;
     gap: 12px;
     margin: 16px 0 24px;
+}
+
+.epub-progress-section .progress-bar-track {
+    cursor: pointer;
+}
+
+.epub-progress-section .progress-bar-track:hover {
+    background: var(--border-color);
+}
+
+.epub-progress-section .progress-bar-track:active {
+    opacity: 0.85;
 }
 
 .time-left-label {
