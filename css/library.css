@@ -61,6 +61,10 @@
     color: var(--text-secondary);
 }
 
+.filter-tab:not(.filter-tab--active):hover {
+    background: var(--border-color);
+}
+
 .filter-tab--active {
     background: var(--primary-color);
     color: var(--on-primary);
@@ -195,7 +199,7 @@
     background: rgba(0, 0, 0, 0.55);
     border-radius: 50%;
     opacity: 0;
-    transition: opacity 0.2s;
+    transition: opacity var(--duration-fast) var(--ease-out);
 }
 
 .book-card-wrap:hover .book-menu-btn,
@@ -247,7 +251,8 @@
     border-radius: var(--radius-sm);
     overflow: hidden;
     background: var(--surface-color);
-    transition: transform 0.2s, box-shadow 0.2s;
+    transition: transform var(--duration-fast) var(--ease-out),
+        box-shadow var(--duration-fast) var(--ease-out);
     margin-bottom: 10px;
 }
 

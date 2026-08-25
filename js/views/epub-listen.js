@@ -265,7 +265,7 @@ export async function renderEpubListen(container, book, { onBack, onOpenSettings
 
   function openChapterSheet() {
     if (!chapterList.length) return;
-    closeChapterSheet();
+    document.querySelector('.chapter-sheet')?.remove();
 
     const sheet = document.createElement('div');
     sheet.className = 'chapter-sheet';
@@ -308,7 +308,10 @@ export async function renderEpubListen(container, book, { onBack, onOpenSettings
   }
 
   function closeChapterSheet() {
-    document.querySelector('.chapter-sheet')?.remove();
+    const sheet = document.querySelector('.chapter-sheet');
+    if (!sheet) return;
+    sheet.classList.add('chapter-sheet--closing');
+    sheet.addEventListener('transitionend', () => sheet.remove(), { once: true });
   }
 
   listenBtn.addEventListener('click', async () => {

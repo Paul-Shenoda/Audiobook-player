@@ -258,8 +258,9 @@
     font-size: 0.95rem;
     line-height: 1.55;
     padding: 6px 8px;
-    border-radius: 8px;
+    border-radius: var(--radius-sm);
     cursor: pointer;
+    transition: background-color var(--duration-fast) var(--ease-out);
 }
 
 .read-along p:hover {
@@ -268,8 +269,18 @@
 
 .read-along p.chunk-current {
     color: var(--text-color);
-    background: var(--surface-color);
+    background: var(--primary-subtle);
     border-left: 3px solid var(--primary-color);
+}
+
+@keyframes sheet-fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes sheet-slide-up {
+    from { transform: translateY(100%); }
+    to { transform: translateY(0); }
 }
 
 .chapter-sheet {
@@ -280,6 +291,12 @@
     align-items: flex-end;
     justify-content: center;
     z-index: 60;
+    animation: sheet-fade-in var(--duration-base) var(--ease-out);
+}
+
+.chapter-sheet--closing {
+    opacity: 0;
+    transition: opacity var(--duration-base) var(--ease-in-out);
 }
 
 .chapter-sheet-panel {
@@ -291,6 +308,12 @@
     display: flex;
     flex-direction: column;
     padding-bottom: env(safe-area-inset-bottom, 0);
+    animation: sheet-slide-up var(--duration-base) var(--ease-out);
+}
+
+.chapter-sheet--closing .chapter-sheet-panel {
+    transform: translateY(100%);
+    transition: transform var(--duration-base) var(--ease-in-out);
 }
 
 .chapter-sheet-header {
