@@ -569,11 +569,11 @@ const IOS_HINT_KEY = 'ios-web-speech-hint-shown';
  * @param {import('../tts/tts-router.js').TTSSettings} settings
  */
 function maybeShowIOSWebSpeechHint(settings) {
-  if (!isIOS() || settings.providerId !== 'web-speech') return;
+  if (!isIOS() || (settings.providerChain?.length ?? 0) > 0) return;
   if (localStorage.getItem(IOS_HINT_KEY)) return;
   localStorage.setItem(IOS_HINT_KEY, '1');
   showToast(
-    'Tip: the built-in voice stops when the screen locks. For background listening, switch to OpenAI TTS in Settings.',
+    'Tip: the built-in voice stops when the screen locks. For background listening, add an AI narrator in Settings.',
     'info',
     9000,
   );

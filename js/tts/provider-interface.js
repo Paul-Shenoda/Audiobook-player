@@ -102,3 +102,19 @@ export function registerTTSProviderFactory(id, factory) {
 export function getProviderFactory(id) {
   return factories.get(id);
 }
+
+/**
+ * Thrown by a provider's synthesize() specifically when it detects free-tier
+ * quota exhaustion (as opposed to a bad key, a bad request, or a network
+ * failure) — the one condition TTSRouter treats as "silently try the next
+ * provider in the chain" rather than surfacing an error to the user. Each
+ * provider is responsible for recognizing its own quota signal (they all
+ * differ — see each provider file) and throwing this instead of a plain
+ * Error when that's what happened.
+ */
+export class TTSQuotaExceededError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'TTSQuotaExceededError';
+  }
+}

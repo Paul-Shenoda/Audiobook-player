@@ -1,24 +1,27 @@
 import { WebSpeechTTS } from './web-speech.js';
 import { cacheKey, getCachedAudio, setCachedAudio } from './chunk-cache.js';
-import { getProviderFactory } from './provider-interface.js';
+import { getProviderFactory, TTSQuotaExceededError } from './provider-interface.js';
 import './openai-tts.js'; // side effect: registers its provider factory/metadata
 
 const SETTINGS_KEY = 'tts-settings';
 
 /**
  * @typedef {Object} TTSSettings
- * @property {string} providerId
- * @property {string} voiceId
  * @property {number} rate
- * @property {string} apiKey
- * @property {string} proxyUrl
+ * @property {string[]} providerChain ordered ids of enabled BYOK/local
+ *   providers to try, in priority order. Web Speech is always the implicit
+ *   final fallback and is never itself a member of this list.
+ * @property {Object<string, Object>} providerConfigs per-provider config
+ *   (credentials, voiceId, etc.), keyed by provider id — shape is
+ *   provider-specific, see each provider's configFields.
+ * @property {string} webSpeechVoiceId
  */
 
 /** @returns {TTSSettings} */
 export function loadTTSSettings() {
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
-    if (raw) return { ...defaultSettings(), ...JSON.parse(raw) };
+    if (raw) return migrateSettings({ ...defaultSettings(), ...JSON.parse(raw) });
   } catch {
     // ignore
   }
@@ -28,12 +31,34 @@ export function loadTTSSettings() {
 /** @returns {TTSSettings} */
 export function defaultSettings() {
   return {
-    providerId: 'web-speech',
-    voiceId: '',
     rate: 1,
-    apiKey: '',
-    proxyUrl: '/api/tts',
+    providerChain: [],
+    providerConfigs: {},
+    webSpeechVoiceId: '',
   };
+}
+
+/**
+ * Upgrades the old single-provider settings shape ({providerId, voiceId,
+ * apiKey, proxyUrl}) to the new provider-chain shape, once, transparently,
+ * so settings saved before this feature existed still work.
+ * @param {Object} settings
+ * @returns {TTSSettings}
+ */
+function migrateSettings(settings) {
+  if (settings.providerId === undefined) return settings;
+
+  const { providerId, voiceId, apiKey, proxyUrl, ...rest } = settings;
+  const migrated = { ...defaultSettings(), ...rest };
+
+  if (providerId === 'web-speech') {
+    migrated.webSpeechVoiceId = voiceId ?? '';
+  } else if (providerId) {
+    migrated.providerChain = [providerId];
+    migrated.providerConfigs = { [providerId]: { apiKey, proxyUrl, voiceId } };
+  }
+
+  return migrated;
 }
 
 /**
@@ -44,11 +69,17 @@ export function saveTTSSettings(settings) {
 }
 
 /**
- * Orchestrates TTS playback across providers with chunk caching.
+ * Orchestrates TTS playback across a chain of providers with chunk caching.
+ * On a quota-exceeded error from the active provider, silently advances to
+ * the next configured provider and retries the same chunk; any other error
+ * falls back to Web Speech, same as before this feature existed.
  */
 export class TTSRouter {
   constructor() {
     this.webSpeech = new WebSpeechTTS();
+    /** @type {import('./provider-interface.js').TTSProvider[]} */
+    this.providerChain = [];
+    this.chainIndex = 0;
     /** @type {import('./provider-interface.js').TTSProvider|null} */
     this.aiProvider = null;
     this.settings = loadTTSSettings();
@@ -69,6 +100,8 @@ export class TTSRouter {
     this.onComplete = null;
     /** @type {((error: Error) => void)|null} */
     this.onError = null;
+    /** @type {((providerName: string) => void)|null} fires when the chain silently advances past a quota-exhausted provider */
+    this.onProviderFallback = null;
   }
 
   /**
@@ -78,13 +111,16 @@ export class TTSRouter {
    */
   configure(settings) {
     this.settings = settings;
-
-    if (settings.providerId === 'web-speech') {
-      this.aiProvider = null;
-    } else {
-      const factory = getProviderFactory(settings.providerId);
-      this.aiProvider = factory ? factory(settings) : null;
-    }
+    this.providerChain = (settings.providerChain ?? [])
+      .map((id) => {
+        const factory = getProviderFactory(id);
+        if (!factory) return null;
+        const config = { ...(settings.providerConfigs?.[id] ?? {}), rate: settings.rate };
+        return factory(config);
+      })
+      .filter(Boolean);
+    this.chainIndex = 0;
+    this.aiProvider = this.providerChain[0] ?? null;
   }
 
   /**
@@ -101,7 +137,7 @@ export class TTSRouter {
     this.playing = true;
     this.paused = false;
 
-    if (this.settings.providerId === 'openai' && this.aiProvider) {
+    if (this.aiProvider) {
       await this.playAIChunk();
     } else {
       this.playWebSpeech(startIndex);
@@ -109,11 +145,11 @@ export class TTSRouter {
   }
 
   /**
-   * Fall back to Web Speech when AI TTS fails.
+   * Fall back to Web Speech when the whole provider chain has failed.
    * @param {number} startIndex
    */
   fallbackToWebSpeech(startIndex) {
-    this.settings = { ...this.settings, providerId: 'web-speech' };
+    this.providerChain = [];
     this.aiProvider = null;
     if (this.audio) {
       this.audio.pause();
@@ -126,8 +162,8 @@ export class TTSRouter {
   }
 
   playWebSpeech(startIndex) {
-    if (this.settings.voiceId) {
-      this.webSpeech.setVoice(this.settings.voiceId);
+    if (this.settings.webSpeechVoiceId) {
+      this.webSpeech.setVoice(this.settings.webSpeechVoiceId);
     }
     this.webSpeech.setRate(this.settings.rate);
     this.webSpeech.onChunkStart = (index) => this.onChunkStart?.(index);
@@ -150,8 +186,9 @@ export class TTSRouter {
    * @returns {Promise<Blob>}
    */
   async getChunkAudio(index) {
-    const voiceId = this.settings.voiceId || 'nova';
-    const key = cacheKey(this.bookId, this.chapterIndex, index, voiceId, 'openai');
+    const providerId = this.aiProvider.id;
+    const voiceId = this.settings.providerConfigs?.[providerId]?.voiceId || '';
+    const key = cacheKey(this.bookId, this.chapterIndex, index, voiceId, providerId);
 
     const cached = await getCachedAudio(key);
     if (cached) return cached;
@@ -160,7 +197,9 @@ export class TTSRouter {
     if (inflight) return inflight;
 
     const request = (async () => {
-      const blob = await this.aiProvider.synthesize(this.chunks[index], voiceId, {});
+      const blob = await this.aiProvider.synthesize(this.chunks[index], voiceId, {
+        rate: this.settings.rate,
+      });
       await setCachedAudio(key, blob, this.bookId);
       return blob;
     })().finally(() => {
@@ -214,8 +253,16 @@ export class TTSRouter {
       this.prefetchChunk(this.chunkIndex + 1);
       await this.audio.play();
     } catch (err) {
+      if (err instanceof TTSQuotaExceededError && this.chainIndex < this.providerChain.length - 1) {
+        this.chainIndex += 1;
+        this.aiProvider = this.providerChain[this.chainIndex];
+        this.onProviderFallback?.(this.aiProvider.name);
+        await this.playAIChunk();
+        return;
+      }
+
       this.playing = false;
-      if (this.settings.providerId === 'openai') {
+      if (this.aiProvider) {
         this.onError?.(
           new Error(
             `${err instanceof Error ? err.message : String(err)} — falling back to Web Speech`,
@@ -228,7 +275,7 @@ export class TTSRouter {
 
   pause() {
     this.paused = true;
-    if (this.settings.providerId === 'openai' && this.aiProvider) {
+    if (this.aiProvider) {
       this.audio?.pause();
     } else {
       this.webSpeech.pause();
@@ -237,7 +284,7 @@ export class TTSRouter {
 
   resume() {
     this.paused = false;
-    if (this.settings.providerId === 'openai' && this.aiProvider) {
+    if (this.aiProvider) {
       this.audio?.play().catch(() => {});
     } else {
       this.webSpeech.resume();
@@ -263,7 +310,7 @@ export class TTSRouter {
    * @returns {Promise<import('./provider-interface.js').TTSVoice[]>}
    */
   async listVoices() {
-    if (this.settings.providerId === 'openai' && this.aiProvider) {
+    if (this.aiProvider) {
       return this.aiProvider.listVoices();
     }
     return this.webSpeech.listVoices();
@@ -283,7 +330,7 @@ export class TTSRouter {
   }
 
   getCurrentChunkIndex() {
-    if (this.settings.providerId === 'openai' && this.aiProvider) {
+    if (this.aiProvider) {
       return this.chunkIndex;
     }
     return this.webSpeech.getCurrentChunkIndex();
