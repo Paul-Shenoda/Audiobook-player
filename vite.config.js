@@ -73,6 +73,12 @@ export default defineConfig({
   build: {
     outDir: 'dist',
   },
+  worker: {
+    // Default worker output is IIFE, which can't properly resolve/bundle a
+    // real npm dependency (kokoro-js) imported inside a Worker — ES format
+    // gives workers the same module resolution as the rest of the app.
+    format: 'es',
+  },
   resolve: {
     alias: {
       jsmediatags: path.resolve(
@@ -93,6 +99,14 @@ export default defineConfig({
       includeAssets: ['manifest.json', 'icons/icon.svg'],
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2}'],
+        // The Kokoro worker chunk bundles the kokoro-js library itself
+        // (~2MB) — it must never be precached into every PWA install; it's
+        // only fetched lazily if/when a user explicitly opts into
+        // downloading the offline voice. The Kokoro model/runtime files
+        // themselves are `.onnx`/`.wasm`/`.bin`, already outside
+        // globPatterns' extension list above, so only this worker chunk
+        // needs excluding here.
+        globIgnores: ['**/kokoro-worker-*.js'],
         // Never intercept the TTS proxy or other API calls.
         navigateFallbackDenylist: [/^\/api\//],
       },
