@@ -106,8 +106,8 @@
     min-height: 72px;
     padding: 0 24px;
     background-color: var(--primary-color);
-    color: #111;
-    border-radius: 999px;
+    color: var(--on-primary);
+    border-radius: var(--radius-pill);
     font-size: 1rem;
     font-weight: 600;
     display: flex;
@@ -142,7 +142,7 @@
     margin-top: 20px;
     padding: 12px 28px;
     background: var(--surface-color);
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     font-size: 0.9rem;
     min-height: 44px;
 }
@@ -194,7 +194,7 @@
     margin-top: 16px;
     padding: 10px 20px;
     background: var(--surface-color);
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     font-size: 0.9rem;
     min-height: 44px;
     color: var(--text-secondary);
@@ -284,7 +284,7 @@
 
 .chapter-sheet-panel {
     background: var(--card-color);
-    border-radius: 16px 16px 0 0;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
     width: 100%;
     max-width: 560px;
     max-height: 70vh;

@@ -54,7 +54,7 @@
 
 .filter-tab {
     padding: 8px 16px;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     background: var(--surface-color);
     font-size: 0.9rem;
     font-weight: 500;
@@ -63,7 +63,7 @@
 
 .filter-tab--active {
     background: var(--primary-color);
-    color: #111;
+    color: var(--on-primary);
     font-weight: 600;
 }
 
@@ -217,7 +217,7 @@
     margin-top: 4px;
     background: var(--card-color);
     border: 1px solid var(--border-color);
-    border-radius: 8px;
+    border-radius: var(--radius-sm);
     min-width: 140px;
     box-shadow: var(--shadow);
     overflow: hidden;
@@ -244,7 +244,7 @@
 .cover-wrap {
     position: relative;
     aspect-ratio: 1;
-    border-radius: 8px;
+    border-radius: var(--radius-sm);
     overflow: hidden;
     background: var(--surface-color);
     transition: transform 0.2s, box-shadow 0.2s;
@@ -356,7 +356,7 @@
     gap: 8px;
     flex: 1;
     background: var(--surface-color);
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     padding: 0 14px;
     color: var(--text-secondary);
     min-height: 44px;
@@ -380,7 +380,7 @@
     background: var(--surface-color);
     color: var(--text-secondary);
     border: none;
-    border-radius: 999px;
+    border-radius: var(--radius-pill);
     padding: 0 14px;
     min-height: 44px;
     font-size: 0.9rem;
