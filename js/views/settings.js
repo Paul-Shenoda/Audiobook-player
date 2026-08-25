@@ -1,4 +1,6 @@
 import { loadTTSSettings, saveTTSSettings, defaultSettings, TTSRouter } from '../tts/tts-router.js';
+import { listProviderCatalog, getProviderFactory } from '../tts/provider-interface.js';
+import { getMonthlyUsage } from '../tts/usage-tracker.js';
 import { getStorageInfo, requestPersistentStorage, formatBytes } from '../utils/storage-persist.js';
 import { clearBookCache, clearAllCache, getCacheStats } from '../tts/chunk-cache.js';
 import { getAllBooks } from '../storage/library-db.js';
@@ -7,14 +9,24 @@ import { icon } from '../utils/icons.js';
 const PREVIEW_BOOK_ID = 'voice-preview';
 const PREVIEW_TEXT = 'This is a preview of the selected voice reading your audiobook.';
 
+// BYOK providers keep this fixed relative priority in providerChain no matter
+// what order the user toggles them on in — see TTSRouter's provider-chain
+// fallback behavior. Any BYOK provider not listed here (future additions)
+// is appended after these, in catalog order.
+const BYOK_PRIORITY = ['elevenlabs', 'openai', 'google'];
+
 /**
  * @param {HTMLElement} container
  * @param {{ onBack: () => void }} callbacks
  */
 export async function renderSettings(container, { onBack }) {
   const settings = loadTTSSettings();
-  const router = new TTSRouter();
-  router.configure(settings);
+  const catalog = listProviderCatalog();
+  const freeProviders = catalog.filter((p) => p.tier === 'free');
+  const byokProviders = orderByPriority(catalog.filter((p) => p.tier === 'byok'));
+
+  // Shared router used only for previews — one at a time, reconfigured per click.
+  const previewRouter = new TTSRouter();
 
   container.innerHTML = `
     <div class="settings-view">
@@ -24,35 +36,27 @@ export async function renderSettings(container, { onBack }) {
       </header>
       <form class="settings-form" id="settings-form">
         <label>
-          TTS Provider
-          <select id="provider-select">
-            <option value="web-speech">Web Speech (built-in, free)</option>
-            <option value="openai">OpenAI TTS (AI narrator)</option>
-          </select>
-        </label>
-        <label>
-          Voice
-          <div class="voice-row">
-            <select id="voice-select"></select>
-            <button type="button" class="preview-btn" id="preview-btn">Preview</button>
-          </div>
-        </label>
-        <label>
           Speed
           <input type="range" id="rate-slider" min="0.5" max="2" step="0.1" value="${settings.rate}">
           <span id="rate-value">${settings.rate}x</span>
         </label>
-        <div id="openai-fields" class="openai-fields" hidden>
-          <label>
-            OpenAI API Key
-            <input type="password" id="api-key" placeholder="sk-..." autocomplete="off">
-            <small>Stored locally in your browser. Use a local proxy in production.</small>
-          </label>
-          <label>
-            Proxy URL
-            <input type="text" id="proxy-url" value="${settings.proxyUrl}">
-          </label>
-        </div>
+
+        <section class="provider-tier">
+          <h2 class="tier-heading">Free &amp; Offline</h2>
+          <p class="tier-subtitle">Built in, no account or credit card needed.</p>
+          <div class="provider-list">
+            ${freeProviders.map((meta) => freeRowShell(meta)).join('')}
+          </div>
+        </section>
+
+        <section class="provider-tier">
+          <h2 class="tier-heading">Bring Your Own Key</h2>
+          <p class="tier-subtitle">Connect a paid API for higher-quality AI narration.</p>
+          <div class="provider-list">
+            ${byokProviders.map((meta) => byokRowShell(meta, settings)).join('')}
+          </div>
+        </section>
+
         <button type="submit" class="primary-btn">Save Settings</button>
       </form>
       <p class="settings-note" id="save-status"></p>
@@ -64,25 +68,9 @@ export async function renderSettings(container, { onBack }) {
     </div>
   `;
 
-  const providerSelect = container.querySelector('#provider-select');
-  const voiceSelect = container.querySelector('#voice-select');
   const rateSlider = container.querySelector('#rate-slider');
   const rateValue = container.querySelector('#rate-value');
-  const openaiFields = container.querySelector('#openai-fields');
-  const apiKeyInput = container.querySelector('#api-key');
-  const proxyUrlInput = container.querySelector('#proxy-url');
   const saveStatus = container.querySelector('#save-status');
-
-  providerSelect.value = settings.providerId;
-  apiKeyInput.value = settings.apiKey;
-  proxyUrlInput.value = settings.proxyUrl;
-  openaiFields.hidden = settings.providerId !== 'openai';
-
-  providerSelect.addEventListener('change', async () => {
-    openaiFields.hidden = providerSelect.value !== 'openai';
-    stopPreview();
-    await populateVoices();
-  });
 
   rateSlider.addEventListener('input', () => {
     rateValue.textContent = `${rateSlider.value}x`;
@@ -94,83 +82,274 @@ export async function renderSettings(container, { onBack }) {
     onBack();
   });
 
-  const previewBtn = container.querySelector('#preview-btn');
-  let previewing = false;
+  // --- Preview handling (shared across every provider row) ---------------
+
+  let activePreviewBtn = null;
 
   function stopPreview() {
-    router.stop();
-    previewing = false;
-    previewBtn.textContent = 'Preview';
+    previewRouter.stop();
+    if (activePreviewBtn) {
+      activePreviewBtn.textContent = 'Preview';
+      activePreviewBtn.disabled = false;
+    }
+    activePreviewBtn = null;
   }
 
-  previewBtn.addEventListener('click', async () => {
-    if (previewing) {
+  /**
+   * @param {string} providerId 'web-speech' or a registered provider id
+   * @param {HTMLButtonElement} btn
+   * @param {() => string} getVoiceId
+   * @param {() => object} getProviderConfig config to preview with (BYOK fields, etc.)
+   */
+  function wirePreviewButton(providerId, btn, getVoiceId, getProviderConfig = () => ({})) {
+    btn.addEventListener('click', async () => {
+      if (activePreviewBtn === btn) {
+        stopPreview();
+        return;
+      }
       stopPreview();
+
+      const rate = Number(rateSlider.value);
+      const voiceId = getVoiceId();
+      const previewSettings =
+        providerId === 'web-speech'
+          ? { ...defaultSettings(), rate, webSpeechVoiceId: voiceId }
+          : {
+              ...defaultSettings(),
+              rate,
+              providerChain: [providerId],
+              providerConfigs: { [providerId]: { ...getProviderConfig(), voiceId } },
+            };
+
+      previewRouter.configure(previewSettings);
+      activePreviewBtn = btn;
+      btn.textContent = 'Stop';
+      previewRouter.onComplete = stopPreview;
+      previewRouter.onError = (err) => {
+        stopPreview();
+        saveStatus.textContent = `Preview failed: ${err.message}`;
+      };
+      await previewRouter.speak([PREVIEW_TEXT], 0, { bookId: PREVIEW_BOOK_ID, chapterIndex: 0 });
+    });
+  }
+
+  // --- Free & Offline section ---------------------------------------------
+
+  for (const meta of freeProviders) {
+    await initFreeProviderRow(meta);
+  }
+
+  async function initFreeProviderRow(meta) {
+    const body = container.querySelector(`#provider-body-${cssId(meta.id)}`);
+    if (!body) return;
+
+    if (meta.id === 'web-speech') {
+      body.innerHTML = voicePickerHTML(meta.id);
+      wireVoicePicker(meta.id, {
+        listVoices: async () => previewRouter.webSpeech.listVoices(),
+        selectedVoiceId: settings.webSpeechVoiceId,
+      });
+      wirePreviewButton(
+        'web-speech',
+        container.querySelector(`#preview-btn-${cssId(meta.id)}`),
+        () => container.querySelector(`#voice-select-${cssId(meta.id)}`)?.value ?? '',
+      );
+      // Voice list can arrive asynchronously in some browsers.
+      speechSynthesis.onvoiceschanged = () => {
+        populateVoiceSelect(
+          container.querySelector(`#voice-select-${cssId(meta.id)}`),
+          () => previewRouter.webSpeech.listVoices(),
+          settings.webSpeechVoiceId,
+        );
+      };
       return;
     }
 
-    router.configure({
-      ...defaultSettings(),
-      providerId: providerSelect.value,
-      voiceId: voiceSelect.value,
-      rate: Number(rateSlider.value),
-      apiKey: apiKeyInput.value.trim(),
-      proxyUrl: proxyUrlInput.value.trim() || '/api/tts',
+    const factory = getProviderFactory(meta.id);
+    if (!factory) {
+      body.innerHTML = '<p class="settings-note">Not available yet.</p>';
+      return;
+    }
+
+    const savedConfig = settings.providerConfigs?.[meta.id] ?? {};
+    let instance;
+    try {
+      instance = factory({ ...savedConfig, rate: settings.rate });
+    } catch {
+      body.innerHTML = '<p class="settings-note">Failed to load this provider.</p>';
+      return;
+    }
+
+    if (typeof instance.isModelDownloaded === 'function') {
+      const ready = await Promise.resolve(instance.isModelDownloaded()).catch(() => false);
+      if (!ready && typeof instance.downloadModel === 'function') {
+        renderDownloadUI(body, meta, instance, savedConfig);
+        return;
+      }
+    }
+
+    renderFreeVoicePicker(body, meta, instance, savedConfig);
+  }
+
+  function renderDownloadUI(body, meta, instance, savedConfig) {
+    body.innerHTML = `
+      <button type="button" class="download-btn" id="download-btn-${cssId(meta.id)}">Download offline voice</button>
+      <div class="download-progress" id="download-progress-${cssId(meta.id)}" hidden>
+        <div class="download-progress-bar">
+          <div class="download-progress-fill" style="width: 0%"></div>
+        </div>
+        <span class="download-progress-label">0%</span>
+      </div>
+      <p class="settings-note" id="download-error-${cssId(meta.id)}" hidden></p>
+    `;
+
+    const btn = body.querySelector(`#download-btn-${cssId(meta.id)}`);
+    const progressWrap = body.querySelector(`#download-progress-${cssId(meta.id)}`);
+    const fill = progressWrap.querySelector('.download-progress-fill');
+    const label = progressWrap.querySelector('.download-progress-label');
+    const errorEl = body.querySelector(`#download-error-${cssId(meta.id)}`);
+
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      progressWrap.hidden = false;
+      errorEl.hidden = true;
+      try {
+        await instance.downloadModel((pct) => {
+          const clamped = Math.max(0, Math.min(100, Math.round(pct)));
+          fill.style.width = `${clamped}%`;
+          label.textContent = `${clamped}%`;
+        });
+        renderFreeVoicePicker(body, meta, instance, savedConfig);
+      } catch (err) {
+        btn.disabled = false;
+        errorEl.hidden = false;
+        errorEl.textContent = `Download failed: ${err instanceof Error ? err.message : String(err)}`;
+      }
+    });
+  }
+
+  function renderFreeVoicePicker(body, meta, instance, savedConfig) {
+    body.innerHTML = voicePickerHTML(meta.id);
+    wireVoicePicker(meta.id, {
+      listVoices: () => instance.listVoices(),
+      selectedVoiceId: savedConfig.voiceId ?? '',
+    });
+    wirePreviewButton(
+      meta.id,
+      body.querySelector(`#preview-btn-${cssId(meta.id)}`),
+      () => body.querySelector(`#voice-select-${cssId(meta.id)}`)?.value ?? '',
+    );
+  }
+
+  // --- Bring Your Own Key section -----------------------------------------
+
+  for (const meta of byokProviders) {
+    initByokProviderRow(meta);
+  }
+
+  function initByokProviderRow(meta) {
+    const id = meta.id;
+    const enableBox = container.querySelector(`#enable-${cssId(id)}`);
+    const configWrap = container.querySelector(`#provider-config-${cssId(id)}`);
+    if (!enableBox || !configWrap) return;
+
+    const fieldValue = (key) => container.querySelector(`#field-${cssId(id)}-${cssId(key)}`)?.value ?? '';
+
+    const buildConfig = () => {
+      const config = {};
+      for (const field of meta.configFields ?? []) {
+        const raw = fieldValue(field.key).trim();
+        config[field.key] = raw || (field.key === 'proxyUrl' ? '/api/tts' : '');
+      }
+      return config;
+    };
+
+    const requiredFieldsFilled = () =>
+      (meta.configFields ?? []).every((field) => field.key === 'proxyUrl' || fieldValue(field.key).trim() !== '');
+
+    const voiceArea = configWrap.querySelector(`#voice-area-${cssId(id)}`);
+
+    const refreshVoiceArea = () => {
+      if (!requiredFieldsFilled()) {
+        voiceArea.innerHTML = '';
+        return;
+      }
+      if (!voiceArea.querySelector(`#voice-select-${cssId(id)}`)) {
+        voiceArea.innerHTML = voicePickerHTML(id);
+        const factory = getProviderFactory(id);
+        wireVoicePicker(id, {
+          listVoices: () => factory(buildConfig()).listVoices(),
+          selectedVoiceId: settings.providerConfigs?.[id]?.voiceId ?? '',
+        });
+        wirePreviewButton(
+          id,
+          voiceArea.querySelector(`#preview-btn-${cssId(id)}`),
+          () => voiceArea.querySelector(`#voice-select-${cssId(id)}`)?.value ?? '',
+          buildConfig,
+        );
+      }
+    };
+
+    configWrap.querySelectorAll('input[data-config-key]').forEach((input) => {
+      input.addEventListener('input', refreshVoiceArea);
     });
 
-    previewing = true;
-    previewBtn.textContent = 'Stop';
-    router.onComplete = stopPreview;
-    router.onError = (err) => {
-      stopPreview();
-      saveStatus.textContent = `Preview failed: ${err.message}`;
-    };
-    await router.speak([PREVIEW_TEXT], 0, { bookId: PREVIEW_BOOK_ID, chapterIndex: 0 });
-  });
+    enableBox.addEventListener('change', () => {
+      configWrap.hidden = !enableBox.checked;
+      if (enableBox.checked) refreshVoiceArea();
+      else stopPreview();
+    });
+
+    if (enableBox.checked) refreshVoiceArea();
+
+    const usage = getMonthlyUsage(id);
+    const usageEl = configWrap.querySelector(`#usage-${cssId(id)}`);
+    if (usageEl && usage > 0) {
+      usageEl.textContent = `${usage.toLocaleString()} characters used this month.`;
+      usageEl.hidden = false;
+    }
+  }
+
+  // --- Save ----------------------------------------------------------------
 
   container.querySelector('#settings-form').addEventListener('submit', (e) => {
     e.preventDefault();
+
+    const providerConfigs = {};
+    const chain = [];
+
+    for (const meta of byokProviders) {
+      const enableBox = container.querySelector(`#enable-${cssId(meta.id)}`);
+      const config = {};
+      for (const field of meta.configFields ?? []) {
+        const raw = container.querySelector(`#field-${cssId(meta.id)}-${cssId(field.key)}`)?.value.trim() ?? '';
+        config[field.key] = raw || (field.key === 'proxyUrl' ? '/api/tts' : '');
+      }
+      const voiceSelect = container.querySelector(`#voice-select-${cssId(meta.id)}`);
+      config.voiceId = voiceSelect?.value ?? '';
+      providerConfigs[meta.id] = config;
+      if (enableBox?.checked) chain.push(meta.id);
+    }
+
+    for (const meta of freeProviders) {
+      if (meta.id === 'web-speech') continue;
+      const voiceSelect = container.querySelector(`#voice-select-${cssId(meta.id)}`);
+      if (voiceSelect) providerConfigs[meta.id] = { voiceId: voiceSelect.value ?? '' };
+    }
+
+    const webSpeechVoiceId = container.querySelector(`#voice-select-${cssId('web-speech')}`)?.value ?? '';
+
     const next = {
-      ...defaultSettings(),
-      providerId: providerSelect.value,
-      voiceId: voiceSelect.value,
       rate: Number(rateSlider.value),
-      apiKey: apiKeyInput.value.trim(),
-      proxyUrl: proxyUrlInput.value.trim() || '/api/tts',
+      providerChain: chain,
+      providerConfigs,
+      webSpeechVoiceId,
     };
+
     saveTTSSettings(next);
     saveStatus.textContent = 'Settings saved.';
   });
 
-  async function populateVoices() {
-    const tempSettings = {
-      ...settings,
-      providerId: providerSelect.value,
-      apiKey: apiKeyInput.value.trim(),
-      proxyUrl: proxyUrlInput.value.trim() || '/api/tts',
-    };
-    router.configure(tempSettings);
-
-    try {
-      const voices = await router.listVoices();
-      voiceSelect.innerHTML = voices
-        .map(
-          (v) =>
-            `<option value="${escapeAttr(v.id)}" ${v.id === settings.voiceId ? 'selected' : ''}>${escapeHtml(v.name)}</option>`,
-        )
-        .join('');
-      if (!voices.length) {
-        voiceSelect.innerHTML = '<option value="">No voices available</option>';
-      }
-    } catch {
-      voiceSelect.innerHTML = '<option value="">Failed to load voices</option>';
-    }
-  }
-
-  if (settings.providerId === 'web-speech') {
-    speechSynthesis.onvoiceschanged = () => populateVoices();
-  }
-  await populateVoices();
   await showStorageInfo(container.querySelector('#storage-info'));
   await renderCacheSection(container.querySelector('#cache-list'));
 
@@ -218,6 +397,126 @@ export async function renderSettings(container, { onBack }) {
       await renderCacheSection(el);
     });
   }
+
+  // --- Shared voice-picker helpers ------------------------------------------
+
+  function wireVoicePicker(id, { listVoices, selectedVoiceId }) {
+    const select = container.querySelector(`#voice-select-${cssId(id)}`);
+    if (select) populateVoiceSelect(select, listVoices, selectedVoiceId);
+  }
+
+  async function populateVoiceSelect(select, listVoices, selectedVoiceId) {
+    if (!select) return;
+    try {
+      const voices = await listVoices();
+      select.innerHTML = voices
+        .map(
+          (v) =>
+            `<option value="${escapeAttr(v.id)}" ${v.id === selectedVoiceId ? 'selected' : ''}>${escapeHtml(v.name)}</option>`,
+        )
+        .join('');
+      if (!voices.length) {
+        select.innerHTML = '<option value="">No voices available</option>';
+      }
+    } catch {
+      select.innerHTML = '<option value="">Failed to load voices</option>';
+    }
+  }
+}
+
+/**
+ * @param {import('../tts/provider-interface.js').TTSProviderMeta} meta
+ */
+function freeRowShell(meta) {
+  return `
+    <div class="provider-row" data-provider="${escapeAttr(meta.id)}">
+      <div class="provider-row-header">
+        <span class="provider-name">${escapeHtml(meta.name)}</span>
+      </div>
+      ${meta.description ? `<p class="provider-desc">${escapeHtml(meta.description)}</p>` : ''}
+      ${meta.limitations ? `<p class="provider-caveat">${escapeHtml(meta.limitations)}</p>` : ''}
+      <div class="provider-body" id="provider-body-${cssId(meta.id)}">
+        <p class="settings-note">Loading…</p>
+      </div>
+    </div>
+  `;
+}
+
+/**
+ * @param {import('../tts/provider-interface.js').TTSProviderMeta} meta
+ * @param {import('../tts/tts-router.js').TTSSettings} settings
+ */
+function byokRowShell(meta, settings) {
+  const enabled = settings.providerChain?.includes(meta.id) ?? false;
+  const savedConfig = settings.providerConfigs?.[meta.id] ?? {};
+
+  return `
+    <div class="provider-row" data-provider="${escapeAttr(meta.id)}">
+      <div class="provider-row-header">
+        <label class="provider-toggle">
+          <input type="checkbox" id="enable-${cssId(meta.id)}" ${enabled ? 'checked' : ''}>
+          <span class="provider-name">${escapeHtml(meta.name)}</span>
+        </label>
+      </div>
+      ${meta.description ? `<p class="provider-desc">${escapeHtml(meta.description)}</p>` : ''}
+      ${meta.limitations ? `<p class="provider-caveat">${escapeHtml(meta.limitations)}</p>` : ''}
+      ${meta.requiresProxy ? '<p class="provider-caveat">Requires running your own proxy/relay server.</p>' : ''}
+      <div class="provider-config" id="provider-config-${cssId(meta.id)}" ${enabled ? '' : 'hidden'}>
+        ${(meta.configFields ?? []).map((field) => configFieldHTML(meta.id, field, savedConfig[field.key])).join('')}
+        <p class="settings-note provider-usage" id="usage-${cssId(meta.id)}" hidden></p>
+        <div class="provider-voice" id="voice-area-${cssId(meta.id)}"></div>
+      </div>
+    </div>
+  `;
+}
+
+/**
+ * @param {string} providerId
+ * @param {import('../tts/provider-interface.js').TTSConfigField} field
+ * @param {string} [value]
+ */
+function configFieldHTML(providerId, field, value) {
+  return `
+    <label>
+      ${escapeHtml(field.label)}
+      <input
+        type="${field.type === 'password' ? 'password' : 'text'}"
+        id="field-${cssId(providerId)}-${cssId(field.key)}"
+        data-config-key="${escapeAttr(field.key)}"
+        value="${escapeAttr(value ?? '')}"
+        placeholder="${escapeAttr(field.placeholder ?? '')}"
+        autocomplete="off"
+      >
+      ${field.help ? `<small>${escapeHtml(field.help)}</small>` : ''}
+    </label>
+  `;
+}
+
+function voicePickerHTML(id) {
+  return `
+    <label>
+      Voice
+      <div class="voice-row">
+        <select id="voice-select-${cssId(id)}"></select>
+        <button type="button" class="preview-btn" id="preview-btn-${cssId(id)}">Preview</button>
+      </div>
+    </label>
+  `;
+}
+
+/**
+ * Order BYOK providers by the fixed priority list, appending any unlisted
+ * ones (future providers) after, in their catalog order.
+ * @param {import('../tts/provider-interface.js').TTSProviderMeta[]} providers
+ */
+function orderByPriority(providers) {
+  return [...providers].sort((a, b) => {
+    const ai = BYOK_PRIORITY.indexOf(a.id);
+    const bi = BYOK_PRIORITY.indexOf(b.id);
+    const aRank = ai === -1 ? BYOK_PRIORITY.length : ai;
+    const bRank = bi === -1 ? BYOK_PRIORITY.length : bi;
+    return aRank - bRank;
+  });
 }
 
 /**
@@ -244,6 +543,11 @@ async function showStorageInfo(el) {
   el.textContent = `${usageText} ${persistText}`;
 }
 
+/** Turns a provider/field id into a safe DOM id fragment. */
+function cssId(text) {
+  return String(text).replace(/[^a-zA-Z0-9_-]/g, '-');
+}
+
 function escapeHtml(text) {
   const div = document.createElement('div');
   div.textContent = text;
@@ -251,5 +555,5 @@ function escapeHtml(text) {
 }
 
 function escapeAttr(text) {
-  return text.replace(/"/g, '&quot;');
+  return String(text).replace(/"/g, '&quot;');
 }
