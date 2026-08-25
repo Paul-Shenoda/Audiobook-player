@@ -112,6 +112,7 @@ export async function renderEpubListen(container, book, { onBack, onOpenSettings
   function applyReadAlongVisibility() {
     readAlongPanel.hidden = !readAlongOpen;
     textToggleBtn.classList.toggle('chapter-picker-btn--active', readAlongOpen);
+    container.querySelector('.player-view')?.classList.toggle('reading-text', readAlongOpen);
     if (readAlongOpen) highlightChunk(currentChunkIndex);
   }
 
