@@ -13,7 +13,7 @@ import {
   estimateSecondsRemaining,
 } from '../tts/playback-state.js';
 import { loadTTSSettings } from '../tts/tts-router.js';
-import { updateBook } from '../storage/library-db.js';
+import { getBook, updateBook } from '../storage/library-db.js';
 import { playbackManager } from '../services/playback-manager.js';
 import { createSleepTimer } from '../services/sleep-timer.js';
 import {
@@ -193,7 +193,7 @@ export async function renderEpubListen(container, book, { onBack, onOpenSettings
   });
 
   try {
-    const arrayBuffer = await book.fileBlob.arrayBuffer();
+    const arrayBuffer = await readFileBlobArrayBuffer(book);
     const { book: opened, metadata } = await openEpub(arrayBuffer);
     epubBook = opened;
     totalChapters = metadata.spineLength;
@@ -649,6 +649,27 @@ function escapeHtml(text) {
   const div = document.createElement('div');
   div.textContent = text;
   return div.innerHTML;
+}
+
+/**
+ * Safari has a long-standing IndexedDB bug where a Blob retrieved from a
+ * previous read throws `NotFoundError: The object can not be found here`
+ * when its contents are actually accessed — re-fetching the record fresh
+ * and retrying once often succeeds where reusing the already-stale Blob
+ * reference does not. Falls through to the original error if the retry
+ * also fails (including if the book was deleted in the meantime).
+ * @param {import('../storage/library-db.js').Book} currentBook
+ * @returns {Promise<ArrayBuffer>}
+ */
+async function readFileBlobArrayBuffer(currentBook) {
+  try {
+    return await currentBook.fileBlob.arrayBuffer();
+  } catch (err) {
+    if (!(err instanceof DOMException) || err.name !== 'NotFoundError') throw err;
+    const fresh = await getBook(currentBook.id);
+    if (!fresh?.fileBlob) throw err;
+    return await fresh.fileBlob.arrayBuffer();
+  }
 }
 
 const IOS_HINT_KEY = 'ios-web-speech-hint-shown';
