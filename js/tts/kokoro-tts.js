@@ -109,6 +109,16 @@ function getWorker() {
   return worker;
 }
 
+// Safety net for a worker that never responds at all — e.g. a module Worker
+// that silently fails to come up, or a WASM session that hangs mid-inference
+// on a constrained device — neither of which is guaranteed to reach
+// `worker.onerror` on every platform. Without this, `synthesize()`'s promise
+// never settles, so TTSRouter's existing "any error falls back to Web
+// Speech" logic never gets a chance to run: total silence, forever, with no
+// error surfaced. Reset on every 'progress' message (real download/loading
+// activity), so a merely slow — not stuck — request isn't cut off early.
+const WORKER_INACTIVITY_TIMEOUT_MS = 60_000;
+
 /**
  * @param {Object} message
  * @param {(progress: unknown) => void} [onProgress]
@@ -117,10 +127,39 @@ function getWorker() {
 function callWorker(message, onProgress) {
   return new Promise((resolve, reject) => {
     const id = nextRequestId++;
-    pending.set(id, { resolve, reject, onProgress });
+
+    /** @type {ReturnType<typeof setTimeout>} */
+    let timer;
+    const clearTimer = () => clearTimeout(timer);
+    const armTimer = () => {
+      clearTimer();
+      timer = setTimeout(() => {
+        if (!pending.has(id)) return;
+        pending.delete(id);
+        reject(new Error('Kokoro took too long to respond — falling back to the built-in voice'));
+      }, WORKER_INACTIVITY_TIMEOUT_MS);
+    };
+
+    pending.set(id, {
+      resolve: (value) => {
+        clearTimer();
+        resolve(value);
+      },
+      reject: (err) => {
+        clearTimer();
+        reject(err);
+      },
+      onProgress: (progress) => {
+        armTimer();
+        onProgress?.(progress);
+      },
+    });
+
+    armTimer();
     try {
       getWorker().postMessage({ id, ...message });
     } catch (err) {
+      clearTimer();
       pending.delete(id);
       reject(err instanceof Error ? err : new Error(String(err)));
     }

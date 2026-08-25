@@ -216,8 +216,12 @@ export async function renderSettings(container, { onBack }) {
       progressWrap.hidden = false;
       errorEl.hidden = true;
       try {
-        await instance.downloadModel((pct) => {
-          const clamped = Math.max(0, Math.min(100, Math.round(pct)));
+        await instance.downloadModel((progressInfo) => {
+          // Only the 'progress' status carries a numeric 0-100 fraction —
+          // 'initiate'/'download'/'done'/'ready' are lifecycle markers with
+          // no percentage of their own, so leave the bar as-is for those.
+          if (progressInfo?.status !== 'progress' || typeof progressInfo.progress !== 'number') return;
+          const clamped = Math.max(0, Math.min(100, Math.round(progressInfo.progress)));
           fill.style.width = `${clamped}%`;
           label.textContent = `${clamped}%`;
         });
