@@ -376,6 +376,12 @@ input[type="range"] {
     border-radius: var(--radius-sm);
 }
 
+.provider-body {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
 .provider-toggle {
     display: flex !important;
     flex-direction: row !important;

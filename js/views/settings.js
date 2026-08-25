@@ -229,7 +229,14 @@ export async function renderSettings(container, { onBack }) {
   }
 
   function renderFreeVoicePicker(body, meta, instance, savedConfig) {
-    body.innerHTML = voicePickerHTML(meta.id);
+    const enabled = settings.providerChain?.includes(meta.id) ?? false;
+    body.innerHTML = `
+      <label class="provider-toggle">
+        <input type="checkbox" id="enable-${cssId(meta.id)}" ${enabled ? 'checked' : ''}>
+        <span>Use as my narrator</span>
+      </label>
+      ${voicePickerHTML(meta.id)}
+    `;
     wireVoicePicker(meta.id, {
       listVoices: () => instance.listVoices(),
       selectedVoiceId: savedConfig.voiceId ?? '',
@@ -335,6 +342,11 @@ export async function renderSettings(container, { onBack }) {
       if (meta.id === 'web-speech') continue;
       const voiceSelect = container.querySelector(`#voice-select-${cssId(meta.id)}`);
       if (voiceSelect) providerConfigs[meta.id] = { voiceId: voiceSelect.value ?? '' };
+      // Free providers (e.g. Kokoro) slot in after BYOK as a good free
+      // fallback — try what the user is paying for first, then this,
+      // then Web Speech (which is never itself in the chain) last.
+      const enableBox = container.querySelector(`#enable-${cssId(meta.id)}`);
+      if (enableBox?.checked) chain.push(meta.id);
     }
 
     const webSpeechVoiceId = container.querySelector(`#voice-select-${cssId('web-speech')}`)?.value ?? '';
