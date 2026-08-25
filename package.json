@@ -13,7 +13,8 @@
   "dependencies": {
     "epubjs": "^0.3.93",
     "idb": "^8.0.3",
-    "jsmediatags": "^3.9.7"
+    "jsmediatags": "^3.9.7",
+    "kokoro-js": "^1.2.1"
   },
   "devDependencies": {
     "@eslint/js": "^9.28.0",
