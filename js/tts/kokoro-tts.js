@@ -58,7 +58,7 @@ export const KOKORO_VOICES = [
 ];
 
 export const KOKORO_LIMITATIONS =
-  '~90MB one-time download (uses mobile data if not on Wi-Fi). Runs entirely on your device — noticeably slower on older phones without WebGPU support (iOS only gained WebGPU in Safari 26), and uses more battery/CPU than the built-in voice. Currently English-only. Quality is a clear step up from the built-in voice, but not equal to a paid AI narrator like ElevenLabs.';
+  '~90MB one-time download (uses mobile data if not on Wi-Fi). Runs entirely on your device — noticeably slower on older or lower-powered phones, and uses more battery/CPU than the built-in voice. Currently English-only. Quality is a clear step up from the built-in voice, but not equal to a paid AI narrator like ElevenLabs.';
 
 /** @type {Worker|null} */
 let worker = null;
@@ -128,18 +128,21 @@ function callWorker(message, onProgress) {
 }
 
 /**
- * Prefer WebGPU when the browser supports it (faster inference); fall back
- * to WASM everywhere else. Dtype is pinned to "q8" (int8 quantized) on both
- * paths — kokoro-js's README suggests "fp32" for WebGPU, but that model is
- * ~4x larger, which would make the disclosed "~90MB download" limitations
- * text wrong depending on which execution provider a given device picked.
- * Keeping dtype fixed keeps the download size predictable and honest; the
- * WebGPU speed benefit still comes from the execution provider itself.
- * @returns {{ device: 'wasm'|'webgpu', dtype: 'q8' }}
+ * Always run on the WASM execution provider. Kokoro/Transformers.js's own
+ * guidance is to pair WebGPU with dtype "fp32" — the "q8" (int8 quantized)
+ * weights this provider uses to keep the download a predictable ~90MB are
+ * not the supported combination for the WebGPU backend, and picking WebGPU
+ * whenever `navigator.gpu` existed used to throw during synthesis on many
+ * WebGPU-capable browsers. That thrown error isn't a quota error, so
+ * TTSRouter treated it like any other provider failure and silently fell
+ * back to Web Speech — i.e. Kokoro looked "broken" (only ever producing the
+ * built-in voice) on exactly the browsers most likely to have WebGPU.
+ * WASM+q8 is the one combination Transformers.js documents a default for,
+ * and it works everywhere, so it's the only path here.
+ * @returns {{ device: 'wasm', dtype: 'q8' }}
  */
 function selectRuntime() {
-  const hasWebGPU = typeof navigator !== 'undefined' && !!navigator.gpu;
-  return { device: hasWebGPU ? 'webgpu' : 'wasm', dtype: 'q8' };
+  return { device: 'wasm', dtype: 'q8' };
 }
 
 /**

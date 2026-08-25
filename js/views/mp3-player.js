@@ -45,16 +45,16 @@ export function renderMp3Player(container, book, { onBack, keepPlaybackOnBack = 
         </div>
         <audio id="main-audio"></audio>
         <div class="progress-section">
-          <input type="range" id="seek-bar" value="0" min="0" max="100" step="0.1" aria-label="Seek">
+          <input type="range" class="seek-range" id="seek-bar" value="0" min="0" max="100" step="0.1" aria-label="Seek">
           <div class="time-labels">
             <span id="current-time">0:00</span>
             <span id="duration">0:00</span>
           </div>
         </div>
-        <div class="controls-section">
-          <button class="skip-btn icon-btn-touch" id="rewind-btn" type="button" aria-label="Rewind 15 seconds">${icon('rewind')}<span>15s</span></button>
-          <button class="play-btn icon-btn-touch" id="play-pause-btn" type="button" aria-label="Play or pause">${icon('play', 32)}</button>
-          <button class="skip-btn icon-btn-touch" id="forward-btn" type="button" aria-label="Forward 15 seconds"><span>15s</span>${icon('forward')}</button>
+        <div class="controls-section controls-section--transport">
+          <button class="skip-btn icon-btn-touch" id="rewind-btn" type="button" aria-label="Rewind 15 seconds">${icon('replay15', 30)}</button>
+          <button class="play-btn play-btn--circle icon-btn-touch" id="play-pause-btn" type="button" aria-label="Play or pause">${icon('play', 30)}</button>
+          <button class="skip-btn icon-btn-touch" id="forward-btn" type="button" aria-label="Forward 15 seconds">${icon('forward15', 30)}</button>
         </div>
         <button class="sleep-btn" id="sleep-btn" type="button" aria-label="Sleep timer">${icon('moon', 18)}<span id="sleep-label">Sleep: Off</span></button>
       </div>
@@ -95,7 +95,7 @@ export function renderMp3Player(container, book, { onBack, keepPlaybackOnBack = 
   });
 
   function setPlayIcon(playing) {
-    playBtn.innerHTML = playing ? icon('pause', 32) : icon('play', 32);
+    playBtn.innerHTML = playing ? icon('pause', 30) : icon('play', 30);
   }
 
   /** @type {number|null} */
@@ -164,9 +164,15 @@ export function renderMp3Player(container, book, { onBack, keepPlaybackOnBack = 
   player.addEventListener('play', () => setMediaPlaybackState('playing'));
   player.addEventListener('pause', () => setMediaPlaybackState('paused'));
 
+  function setSeekFill(percent) {
+    seekBar.style.setProperty('--seek-pct', `${percent}%`);
+  }
+
   player.addEventListener('timeupdate', () => {
     if (!player.duration) return;
-    seekBar.value = String((player.currentTime / player.duration) * 100);
+    const percent = (player.currentTime / player.duration) * 100;
+    seekBar.value = String(percent);
+    setSeekFill(percent);
     currentTimeText.textContent = formatTime(player.currentTime);
     durationText.textContent = formatTime(player.duration);
     setMediaPositionState({
@@ -177,6 +183,7 @@ export function renderMp3Player(container, book, { onBack, keepPlaybackOnBack = 
   });
 
   seekBar.addEventListener('input', () => {
+    setSeekFill(Number(seekBar.value));
     if (!player.duration) return;
     player.currentTime = (Number(seekBar.value) / 100) * player.duration;
   });
