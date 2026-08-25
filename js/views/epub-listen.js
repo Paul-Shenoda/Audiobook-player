@@ -69,13 +69,17 @@ export async function renderEpubListen(container, book, { onBack, onOpenSettings
           <button class="play-btn listen-btn icon-btn-touch" id="listen-pause-btn" type="button" aria-label="Play or pause">${icon('play', 28)}<span>Listen</span></button>
           <button class="chapter-btn icon-btn-touch" id="skip-forward-btn" type="button" aria-label="Skip forward">${icon('forward')}</button>
         </div>
-        <div class="speed-control">
-          <button class="speed-step-btn icon-btn-touch" id="speed-down-btn" type="button" aria-label="Decrease speed">−</button>
-          <span class="speed-label" id="speed-label" aria-live="polite"></span>
-          <button class="speed-step-btn icon-btn-touch" id="speed-up-btn" type="button" aria-label="Increase speed">+</button>
+        <div class="secondary-controls">
+          <div class="speed-control">
+            <button class="speed-step-btn icon-btn-touch" id="speed-down-btn" type="button" aria-label="Decrease speed">−</button>
+            <span class="speed-label" id="speed-label" aria-live="polite"></span>
+            <button class="speed-step-btn icon-btn-touch" id="speed-up-btn" type="button" aria-label="Increase speed">+</button>
+          </div>
+          <span class="secondary-controls-divider" aria-hidden="true"></span>
+          <button class="sleep-btn" id="sleep-btn" type="button" aria-label="Sleep timer">${icon('moon', 18)}<span id="sleep-label">Sleep: Off</span></button>
+          <span class="secondary-controls-divider" aria-hidden="true"></span>
+          <button class="stop-btn" id="stop-btn" type="button">Stop</button>
         </div>
-        <button class="sleep-btn" id="sleep-btn" type="button" aria-label="Sleep timer">${icon('moon', 18)}<span id="sleep-label">Sleep: Off</span></button>
-        <button class="stop-btn" id="stop-btn" type="button">Stop</button>
         <p class="status-text" id="status-text"></p>
       </div>
     </div>

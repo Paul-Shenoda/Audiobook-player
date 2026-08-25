@@ -138,39 +138,56 @@
     font-weight: 500;
 }
 
+.secondary-controls {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    margin-top: 16px;
+    flex-wrap: wrap;
+}
+
+.secondary-controls-divider {
+    width: 1px;
+    height: 18px;
+    background: var(--border-color);
+    margin: 0 4px;
+}
+
 .stop-btn {
-    margin-top: 20px;
-    padding: 12px 28px;
-    background: var(--surface-color);
-    border-radius: var(--radius-pill);
-    font-size: 0.9rem;
-    min-height: 44px;
+    background: none;
+    color: var(--text-secondary);
+    padding: 6px 14px;
+    border-radius: 8px;
+    font-size: 0.8rem;
+    min-height: 36px;
 }
 
 .stop-btn:hover {
-    background: var(--border-color);
+    background: var(--surface-color);
+    color: var(--text-color);
 }
 
 .speed-control {
     display: flex;
     align-items: center;
-    gap: 4px;
-    margin-top: 16px;
+    gap: 2px;
 }
 
 .speed-step-btn {
-    background: var(--surface-color);
+    background: none;
     border-radius: 8px;
-    font-size: 1.2rem;
+    font-size: 1rem;
     font-weight: 600;
-    width: 44px;
-    height: 44px;
+    width: 36px;
+    height: 36px;
     line-height: 1;
-    color: var(--text-color);
+    color: var(--text-secondary);
 }
 
 .speed-step-btn:hover:not(:disabled) {
-    background: var(--border-color);
+    background: var(--surface-color);
+    color: var(--text-color);
 }
 
 .speed-step-btn:disabled {
@@ -179,35 +196,35 @@
 }
 
 .speed-label {
-    min-width: 52px;
+    min-width: 44px;
     text-align: center;
-    font-size: 0.95rem;
+    font-size: 0.8rem;
     font-weight: 600;
-    color: var(--text-color);
+    color: var(--text-secondary);
     font-variant-numeric: tabular-nums;
 }
 
 .sleep-btn {
     display: inline-flex;
     align-items: center;
-    gap: 8px;
-    margin-top: 16px;
-    padding: 10px 20px;
-    background: var(--surface-color);
-    border-radius: var(--radius-pill);
-    font-size: 0.9rem;
-    min-height: 44px;
+    gap: 6px;
+    background: none;
+    padding: 6px 14px;
+    border-radius: 8px;
+    font-size: 0.8rem;
+    min-height: 36px;
     color: var(--text-secondary);
     font-variant-numeric: tabular-nums;
 }
 
 .sleep-btn:hover {
-    background: var(--border-color);
+    background: var(--surface-color);
+    color: var(--text-color);
 }
 
 .sleep-btn--active {
     color: var(--text-color);
-    background: var(--border-color);
+    background: var(--surface-color);
 }
 
 .chapter-row {
