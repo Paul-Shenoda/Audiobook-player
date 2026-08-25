@@ -18,6 +18,7 @@
 
 .player-cover-wrap {
     margin-bottom: 24px;
+    transition: margin var(--duration-base) var(--ease-out);
 }
 
 .player-cover {
@@ -27,6 +28,8 @@
     border-radius: 12px;
     box-shadow: var(--shadow);
     display: block;
+    transition: width var(--duration-base) var(--ease-out),
+        height var(--duration-base) var(--ease-out);
 }
 
 .player-title {
@@ -380,6 +383,19 @@
 .epub-listen-view .player-container {
     justify-content: flex-start;
     padding-top: 16px;
+}
+
+/* When the read-along panel is open, collapse the cover art so the extra
+   panel height doesn't push transport controls below the fold — same trick
+   Spotify's lyrics view uses (cover shrinks, text takes its place). */
+.epub-listen-view.reading-text .player-cover-wrap {
+    margin-bottom: 8px;
+}
+
+.epub-listen-view.reading-text .player-cover {
+    width: 64px;
+    height: 64px;
+    border-radius: 8px;
 }
 
 .back-btn {
