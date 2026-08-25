@@ -315,6 +315,84 @@
     text-overflow: ellipsis;
 }
 
+.book-series {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    opacity: 0.75;
+    margin-top: 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.edit-sheet-panel {
+    max-height: 85vh;
+}
+
+.edit-form {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding: 4px 20px 20px;
+    overflow-y: auto;
+}
+
+.edit-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+.edit-field input {
+    font-size: 1rem;
+    color: var(--text-color);
+    background: var(--bg-color);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 10px 12px;
+}
+
+.edit-save-btn {
+    margin-top: 8px;
+    width: 100%;
+    padding: 12px;
+    text-align: center;
+}
+
+.combine-file-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 240px;
+    overflow-y: auto;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 6px;
+}
+
+.combine-file-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+}
+
+.combine-file-index {
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+    min-width: 18px;
+}
+
+.combine-file-name {
+    flex: 1;
+    font-size: 0.85rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 .empty-state {
     padding: 48px 24px;
     text-align: center;

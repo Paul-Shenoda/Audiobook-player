@@ -2,6 +2,7 @@ import jsmediatags from 'jsmediatags';
 import { formatTime } from '../utils/format-time.js';
 import { createManagedObjectUrl, revokeManagedObjectUrl } from '../utils/object-url.js';
 import { updateBook } from '../storage/library-db.js';
+import { estimatePercent } from '../tts/playback-state.js';
 import { playbackManager } from '../services/playback-manager.js';
 import {
   initMediaSession,
@@ -12,6 +13,8 @@ import {
 import { createSleepTimer } from '../services/sleep-timer.js';
 import { icon } from '../utils/icons.js';
 import { renderCoverMarkup, getBookCoverUrl } from '../utils/cover-art.js';
+import { seriesLabel } from '../utils/series-label.js';
+import { showToast } from '../utils/toast.js';
 
 /**
  * @typedef {import('../storage/library-db.js').Book} Book
@@ -29,6 +32,14 @@ const LONG_PAUSE_MS = 5 * 60 * 1000;
  */
 export function renderMp3Player(container, book, { onBack, keepPlaybackOnBack = false }) {
   const coverUrl = getBookCoverUrl(book);
+  const tracks = book.tracks ?? [];
+  const totalTracks = tracks.length;
+  // In-file chapter markers only apply to a book with a single physical
+  // track (e.g. an M4B) — a multi-track book's tracks are its chapters.
+  const fileChapters = totalTracks === 1 ? (tracks[0]?.chapters ?? []) : [];
+  const hasTrackChapters = totalTracks > 1;
+  const hasFileChapters = !hasTrackChapters && fileChapters.length > 1;
+  const hasChapters = hasTrackChapters || hasFileChapters;
 
   container.innerHTML = `
     <div class="player-view">
@@ -40,9 +51,16 @@ export function renderMp3Player(container, book, { onBack, keepPlaybackOnBack = 
           ${renderCoverMarkup(book, 'player-cover')}
         </div>
         <div class="metadata-section">
-          <h2 id="chapter-title" class="player-title">${escapeHtml(book.title)}</h2>
+          <h2 id="book-title" class="player-title">${escapeHtml(book.title)}</h2>
           <p id="author-name" class="player-author">${escapeHtml(book.author)}</p>
+          ${book.series ? `<p class="player-series" id="series-label">${escapeHtml(seriesLabel(book.series))}</p>` : ''}
         </div>
+        ${hasChapters ? `
+        <div class="chapter-row">
+          <button class="chapter-picker-btn" id="chapter-picker-btn" type="button" aria-label="Choose chapter">${icon('list', 18)}<span id="chapter-label">Track 1</span></button>
+          <span class="book-percent" id="book-percent" aria-label="Book progress">0%</span>
+        </div>
+        ` : ''}
         <audio id="main-audio"></audio>
         <div class="progress-section">
           <input type="range" class="seek-range" id="seek-bar" value="0" min="0" max="100" step="0.1" aria-label="Seek">
@@ -56,7 +74,10 @@ export function renderMp3Player(container, book, { onBack, keepPlaybackOnBack = 
           <button class="play-btn play-btn--circle icon-btn-touch" id="play-pause-btn" type="button" aria-label="Play or pause">${icon('play', 30)}</button>
           <button class="skip-btn icon-btn-touch" id="forward-btn" type="button" aria-label="Forward 15 seconds">${icon('forward15', 30)}</button>
         </div>
-        <button class="sleep-btn" id="sleep-btn" type="button" aria-label="Sleep timer">${icon('moon', 18)}<span id="sleep-label">Sleep: Off</span></button>
+        <div class="secondary-controls">
+          <button class="sleep-btn" id="sleep-btn" type="button" aria-label="Sleep timer">${icon('moon', 18)}<span id="sleep-label">Sleep: Off</span></button>
+          <button class="sleep-btn" id="bookmarks-btn" type="button" aria-label="Bookmarks">${icon('bookmark', 18)}<span>Bookmarks</span></button>
+        </div>
       </div>
     </div>
   `;
@@ -66,21 +87,77 @@ export function renderMp3Player(container, book, { onBack, keepPlaybackOnBack = 
   const seekBar = container.querySelector('#seek-bar');
   const currentTimeText = container.querySelector('#current-time');
   const durationText = container.querySelector('#duration');
-  const chapterTitle = container.querySelector('#chapter-title');
+  const bookTitle = container.querySelector('#book-title');
+  const chapterLabel = container.querySelector('#chapter-label');
+  const bookPercentEl = container.querySelector('#book-percent');
 
   playbackManager.audio = player;
 
-  const fileURL = createManagedObjectUrl(book.fileBlob);
-  player.src = fileURL;
+  let trackIndex = Math.min(Math.max(book.progress?.trackIndex ?? 0, 0), totalTracks - 1);
+  let resumeSeconds = trackIndex === (book.progress?.trackIndex ?? 0) ? book.progress?.seconds ?? 0 : 0;
+  let bookmarks = book.bookmarks ?? [];
 
-  if (book.progress?.seconds) {
-    player.currentTime = Math.max(0, book.progress.seconds - RESTORE_REWIND_S);
+  function currentTrack() {
+    return tracks[trackIndex];
   }
 
-  jsmediatags.read(book.fileBlob, {
+  function updateChapterLabel() {
+    if (!hasTrackChapters) return;
+    const track = currentTrack();
+    chapterLabel.textContent = track?.label || `Track ${trackIndex + 1}`;
+    bookTitle.textContent = book.title;
+  }
+
+  /** Which in-file chapter the playhead is currently in (0 when no chapters). */
+  function currentFileChapterIndex() {
+    let idx = 0;
+    for (let i = 0; i < fileChapters.length; i += 1) {
+      if (fileChapters[i].startSeconds <= player.currentTime) idx = i;
+      else break;
+    }
+    return idx;
+  }
+
+  let lastFileChapterIdx = -1;
+  function updateFileChapterLabel() {
+    if (!hasFileChapters) return;
+    const idx = currentFileChapterIndex();
+    if (idx === lastFileChapterIdx) return;
+    lastFileChapterIdx = idx;
+    chapterLabel.textContent = fileChapters[idx]?.title || `Chapter ${idx + 1}`;
+  }
+
+  function updateBookPercent() {
+    if (!hasChapters) return;
+    const percent = estimatePercent(trackIndex, totalTracks, player.currentTime || 0, player.duration || 1);
+    bookPercentEl.textContent = `${percent}%`;
+  }
+
+  /**
+   * Load a track by index. Continuous playback across chapter boundaries —
+   * mirrors epub-listen.js's chunk-to-chunk rollover (loadAndPrepareChapter +
+   * startListening pattern) for the same "one file per chapter" shape.
+   * @param {number} index
+   * @param {{ seconds?: number, autoplay?: boolean }} [options]
+   */
+  function loadTrack(index, { seconds = 0, autoplay = false } = {}) {
+    trackIndex = Math.min(Math.max(index, 0), totalTracks - 1);
+    const track = currentTrack();
+    player.src = createManagedObjectUrl(track.fileBlob);
+    player.currentTime = seconds;
+    updateChapterLabel();
+    if (autoplay) {
+      player.play().catch(() => setPlayIcon(false));
+    }
+  }
+
+  loadTrack(trackIndex, { seconds: Math.max(0, resumeSeconds - RESTORE_REWIND_S) });
+  updateFileChapterLabel();
+
+  jsmediatags.read(currentTrack().fileBlob, {
     onSuccess(tag) {
-      if (tag.tags.title) {
-        chapterTitle.textContent = tag.tags.title;
+      if (tag.tags.title && !hasChapters) {
+        bookTitle.textContent = tag.tags.title;
       }
     },
     onError() {
@@ -118,14 +195,36 @@ export function renderMp3Player(container, book, { onBack, keepPlaybackOnBack = 
     playbackManager.setPaused(true);
   }
 
+  /** Step back 15s, rolling into the previous track's tail at the start. */
   function skipBack() {
-    player.currentTime = Math.max(0, player.currentTime - 15);
+    const target = player.currentTime - 15;
+    if (target >= 0 || trackIndex === 0) {
+      player.currentTime = Math.max(0, target);
+      return;
+    }
+    const wasPlaying = !player.paused;
+    loadTrack(trackIndex - 1, { seconds: 0, autoplay: wasPlaying });
+    // Land near the end once duration is known (metadata loads async).
+    player.addEventListener(
+      'loadedmetadata',
+      () => {
+        player.currentTime = Math.max(0, player.duration + target);
+      },
+      { once: true },
+    );
   }
 
+  /** Step forward 15s, rolling into the next track's head at the end. */
   function skipForward() {
-    if (player.duration) {
-      player.currentTime = Math.min(player.duration, player.currentTime + 15);
+    if (!player.duration) return;
+    const target = player.currentTime + 15;
+    if (target <= player.duration || trackIndex >= totalTracks - 1) {
+      player.currentTime = Math.min(player.duration, target);
+      return;
     }
+    const overflow = target - player.duration;
+    const wasPlaying = !player.paused;
+    loadTrack(trackIndex + 1, { seconds: overflow, autoplay: wasPlaying });
   }
 
   playBtn.addEventListener('click', () => {
@@ -151,6 +250,169 @@ export function renderMp3Player(container, book, { onBack, keepPlaybackOnBack = 
   container.querySelector('#rewind-btn').addEventListener('click', skipBack);
   container.querySelector('#forward-btn').addEventListener('click', skipForward);
 
+  function goPrevChapter() {
+    if (hasTrackChapters) {
+      if (trackIndex > 0) loadTrack(trackIndex - 1, { autoplay: !player.paused });
+    } else if (hasFileChapters) {
+      const idx = currentFileChapterIndex();
+      if (idx > 0) {
+        player.currentTime = fileChapters[idx - 1].startSeconds;
+        updateFileChapterLabel();
+      }
+    }
+  }
+
+  function goNextChapter() {
+    if (hasTrackChapters) {
+      if (trackIndex < totalTracks - 1) loadTrack(trackIndex + 1, { autoplay: !player.paused });
+    } else if (hasFileChapters) {
+      const idx = currentFileChapterIndex();
+      if (idx < fileChapters.length - 1) {
+        player.currentTime = fileChapters[idx + 1].startSeconds;
+        updateFileChapterLabel();
+      }
+    }
+  }
+
+  if (hasChapters) {
+    container.querySelector('#chapter-picker-btn').addEventListener('click', openChapterSheet);
+  }
+
+  /** Chapter/track picker entries — either whole tracks or in-file chapter markers. */
+  function chapterSheetItems() {
+    return hasTrackChapters
+      ? tracks.map((t, i) => ({ index: i, label: t.label || `Track ${i + 1}`, current: i === trackIndex }))
+      : fileChapters.map((c, i) => ({
+          index: i,
+          label: c.title || `Chapter ${i + 1}`,
+          current: i === currentFileChapterIndex(),
+        }));
+  }
+
+  function openChapterSheet() {
+    document.querySelector('.chapter-sheet')?.remove();
+
+    const sheet = document.createElement('div');
+    sheet.className = 'chapter-sheet';
+    sheet.innerHTML = `
+      <div class="chapter-sheet-panel">
+        <div class="chapter-sheet-header">
+          <h3>Chapters</h3>
+          <button class="icon-btn-touch" id="chapter-sheet-close" type="button" aria-label="Close">${icon('close')}</button>
+        </div>
+        <div class="chapter-sheet-list">
+          ${chapterSheetItems()
+            .map(
+              (it) =>
+                `<button type="button" data-chapter-index="${it.index}" class="${it.current ? 'chapter-current' : ''}">${escapeHtml(it.label)}</button>`,
+            )
+            .join('')}
+        </div>
+      </div>
+    `;
+    document.body.appendChild(sheet);
+
+    sheet.addEventListener('click', (e) => {
+      if (e.target === sheet) closeSheet();
+    });
+    sheet.querySelector('#chapter-sheet-close').addEventListener('click', closeSheet);
+    sheet.querySelectorAll('[data-chapter-index]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const idx = Number(btn.getAttribute('data-chapter-index'));
+        closeSheet();
+        if (hasTrackChapters) {
+          if (idx !== trackIndex) loadTrack(idx, { autoplay: !player.paused });
+        } else {
+          player.currentTime = fileChapters[idx].startSeconds;
+          updateFileChapterLabel();
+        }
+      });
+    });
+
+    sheet.querySelector('.chapter-current')?.scrollIntoView({ block: 'center' });
+  }
+
+  function closeSheet() {
+    const sheet = document.querySelector('.chapter-sheet');
+    if (!sheet) return;
+    sheet.classList.add('chapter-sheet--closing');
+    sheet.addEventListener('transitionend', () => sheet.remove(), { once: true });
+  }
+
+  container.querySelector('#bookmarks-btn').addEventListener('click', openBookmarksSheet);
+
+  function addBookmarkHere() {
+    const track = currentTrack();
+    const label = `${track?.label || `Track ${trackIndex + 1}`} — ${formatTime(player.currentTime)}`;
+    bookmarks = [
+      { id: crypto.randomUUID(), label, createdAt: Date.now(), trackIndex, seconds: player.currentTime },
+      ...bookmarks,
+    ];
+    updateBook(book.id, { bookmarks });
+    showToast('Bookmark added', 'success');
+    openBookmarksSheet();
+  }
+
+  function removeBookmark(id) {
+    bookmarks = bookmarks.filter((b) => b.id !== id);
+    updateBook(book.id, { bookmarks });
+    openBookmarksSheet();
+  }
+
+  function jumpToBookmark(bm) {
+    closeSheet();
+    loadTrack(bm.trackIndex, { seconds: bm.seconds, autoplay: !player.paused });
+  }
+
+  function openBookmarksSheet() {
+    document.querySelector('.chapter-sheet')?.remove();
+
+    const sheet = document.createElement('div');
+    sheet.className = 'chapter-sheet';
+    sheet.innerHTML = `
+      <div class="chapter-sheet-panel">
+        <div class="chapter-sheet-header">
+          <h3>Bookmarks</h3>
+          <button class="icon-btn-touch" id="bookmark-sheet-close" type="button" aria-label="Close">${icon('close')}</button>
+        </div>
+        <button type="button" class="bookmark-add-row" id="bookmark-add-btn">${icon('add', 18)} Bookmark this spot</button>
+        <div class="chapter-sheet-list bookmark-list">
+          ${bookmarks.length
+            ? bookmarks
+                .map(
+                  (bm) => `
+                  <div class="bookmark-row">
+                    <button type="button" class="bookmark-jump-btn" data-jump-id="${bm.id}">${escapeHtml(bm.label)}</button>
+                    <button type="button" class="icon-btn-touch bookmark-delete-btn" data-remove-id="${bm.id}" aria-label="Delete bookmark">${icon('trash', 16)}</button>
+                  </div>
+                `,
+                )
+                .join('')
+            : '<p class="bookmark-empty">No bookmarks yet.</p>'}
+        </div>
+      </div>
+    `;
+    document.body.appendChild(sheet);
+
+    sheet.addEventListener('click', (e) => {
+      if (e.target === sheet) closeSheet();
+    });
+    sheet.querySelector('#bookmark-sheet-close').addEventListener('click', closeSheet);
+    sheet.querySelector('#bookmark-add-btn').addEventListener('click', addBookmarkHere);
+    sheet.querySelectorAll('[data-jump-id]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const bm = bookmarks.find((b) => b.id === btn.getAttribute('data-jump-id'));
+        if (bm) jumpToBookmark(bm);
+      });
+    });
+    sheet.querySelectorAll('[data-remove-id]').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        removeBookmark(btn.getAttribute('data-remove-id'));
+      });
+    });
+  }
+
   initMediaSession(book, {
     onPlay: play,
     onPause: pause,
@@ -159,6 +421,8 @@ export function renderMp3Player(container, book, { onBack, keepPlaybackOnBack = 
     onSeekTo: (seconds) => {
       player.currentTime = seconds;
     },
+    onPreviousTrack: hasChapters ? goPrevChapter : undefined,
+    onNextTrack: hasChapters ? goNextChapter : undefined,
   });
 
   player.addEventListener('play', () => setMediaPlaybackState('playing'));
@@ -175,6 +439,8 @@ export function renderMp3Player(container, book, { onBack, keepPlaybackOnBack = 
     setSeekFill(percent);
     currentTimeText.textContent = formatTime(player.currentTime);
     durationText.textContent = formatTime(player.duration);
+    updateBookPercent();
+    updateFileChapterLabel();
     setMediaPositionState({
       duration: player.duration,
       position: player.currentTime,
@@ -189,6 +455,10 @@ export function renderMp3Player(container, book, { onBack, keepPlaybackOnBack = 
   });
 
   player.addEventListener('ended', () => {
+    if (trackIndex < totalTracks - 1) {
+      loadTrack(trackIndex + 1, { autoplay: true });
+      return;
+    }
     setPlayIcon(false);
     seekBar.value = '0';
     playbackManager.setPaused(true);
@@ -198,10 +468,10 @@ export function renderMp3Player(container, book, { onBack, keepPlaybackOnBack = 
   let saveTimer = null;
   function saveProgress() {
     if (!player.duration) return;
-    const percent = Math.round((player.currentTime / player.duration) * 100);
+    const percent = estimatePercent(trackIndex, totalTracks, player.currentTime, player.duration);
     updateBook(book.id, {
       lastOpenedAt: Date.now(),
-      progress: { seconds: player.currentTime, percent },
+      progress: { trackIndex, seconds: player.currentTime, percent },
     });
   }
 
@@ -217,6 +487,7 @@ export function renderMp3Player(container, book, { onBack, keepPlaybackOnBack = 
     const { keepPlayback = false } = options;
     clearTimeout(saveTimer);
     saveProgress();
+    closeSheet();
     if (!keepPlayback) {
       sleepTimer.destroy();
       player.pause();

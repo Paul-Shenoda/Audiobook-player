@@ -77,6 +77,7 @@ export async function renderEpubListen(container, book, { onBack, onOpenSettings
           </div>
           <span class="secondary-controls-divider" aria-hidden="true"></span>
           <button class="sleep-btn" id="sleep-btn" type="button" aria-label="Sleep timer">${icon('moon', 18)}<span id="sleep-label">Sleep: Off</span></button>
+          <button class="sleep-btn" id="bookmarks-btn" type="button" aria-label="Bookmarks">${icon('bookmark', 18)}<span>Bookmarks</span></button>
           <span class="secondary-controls-divider" aria-hidden="true"></span>
           <button class="stop-btn" id="stop-btn" type="button">Stop</button>
         </div>
@@ -102,6 +103,7 @@ export async function renderEpubListen(container, book, { onBack, onOpenSettings
   let currentChunkIndex = 0;
   /** @type {import('../epub/epub-loader.js').ChapterEntry[]} */
   let chapterList = [];
+  let bookmarks = book.bookmarks ?? [];
 
   const SPEED_STEPS = [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
   const settings = loadTTSSettings();
@@ -336,13 +338,13 @@ export async function renderEpubListen(container, book, { onBack, onOpenSettings
     document.body.appendChild(sheet);
 
     sheet.addEventListener('click', (e) => {
-      if (e.target === sheet) closeChapterSheet();
+      if (e.target === sheet) closeSheet();
     });
-    sheet.querySelector('#chapter-sheet-close').addEventListener('click', closeChapterSheet);
+    sheet.querySelector('#chapter-sheet-close').addEventListener('click', closeSheet);
     sheet.querySelectorAll('[data-chapter-index]').forEach((btn) => {
       btn.addEventListener('click', async () => {
         const idx = Number(btn.getAttribute('data-chapter-index'));
-        closeChapterSheet();
+        closeSheet();
         if (idx !== chapterIndex) {
           ttsRouter.stop();
           setListenButton(false);
@@ -355,11 +357,97 @@ export async function renderEpubListen(container, book, { onBack, onOpenSettings
     sheet.querySelector('.chapter-current')?.scrollIntoView({ block: 'center' });
   }
 
-  function closeChapterSheet() {
+  function closeSheet() {
     const sheet = document.querySelector('.chapter-sheet');
     if (!sheet) return;
     sheet.classList.add('chapter-sheet--closing');
     sheet.addEventListener('transitionend', () => sheet.remove(), { once: true });
+  }
+
+  container.querySelector('#bookmarks-btn').addEventListener('click', openBookmarksSheet);
+
+  function addBookmarkHere() {
+    const entry = chapterList[chapterIndex];
+    const chapterName = entry?.hasTocLabel ? entry.label : `Chapter ${chapterIndex + 1}`;
+    const snippet = (chunks[currentChunkIndex] || '').trim().slice(0, 60);
+    const label = snippet ? `${chapterName} — "${snippet}${snippet.length === 60 ? '…' : ''}"` : chapterName;
+    bookmarks = [
+      {
+        id: crypto.randomUUID(),
+        label,
+        createdAt: Date.now(),
+        chapterIndex,
+        chunkIndex: currentChunkIndex,
+      },
+      ...bookmarks,
+    ];
+    updateBook(book.id, { bookmarks });
+    showToast('Bookmark added', 'success');
+    openBookmarksSheet();
+  }
+
+  function removeBookmark(id) {
+    bookmarks = bookmarks.filter((b) => b.id !== id);
+    updateBook(book.id, { bookmarks });
+    openBookmarksSheet();
+  }
+
+  async function jumpToBookmark(bm) {
+    closeSheet();
+    ttsRouter.stop();
+    setListenButton(false);
+    chapterIndex = bm.chapterIndex;
+    await loadAndPrepareChapter();
+    await startListening(bm.chunkIndex);
+  }
+
+  function openBookmarksSheet() {
+    document.querySelector('.chapter-sheet')?.remove();
+
+    const sheet = document.createElement('div');
+    sheet.className = 'chapter-sheet';
+    sheet.innerHTML = `
+      <div class="chapter-sheet-panel">
+        <div class="chapter-sheet-header">
+          <h3>Bookmarks</h3>
+          <button class="icon-btn-touch" id="bookmark-sheet-close" type="button" aria-label="Close">${icon('close')}</button>
+        </div>
+        <button type="button" class="bookmark-add-row" id="bookmark-add-btn">${icon('add', 18)} Bookmark this spot</button>
+        <div class="chapter-sheet-list bookmark-list">
+          ${bookmarks.length
+            ? bookmarks
+                .map(
+                  (bm) => `
+                  <div class="bookmark-row">
+                    <button type="button" class="bookmark-jump-btn" data-jump-id="${bm.id}">${escapeHtml(bm.label)}</button>
+                    <button type="button" class="icon-btn-touch bookmark-delete-btn" data-remove-id="${bm.id}" aria-label="Delete bookmark">${icon('trash', 16)}</button>
+                  </div>
+                `,
+                )
+                .join('')
+            : '<p class="bookmark-empty">No bookmarks yet.</p>'}
+        </div>
+      </div>
+    `;
+    document.body.appendChild(sheet);
+
+    sheet.addEventListener('click', (e) => {
+      if (e.target === sheet) closeSheet();
+    });
+    sheet.querySelector('#bookmark-sheet-close').addEventListener('click', closeSheet);
+    sheet.querySelector('#bookmark-add-btn').addEventListener('click', addBookmarkHere);
+    sheet.querySelectorAll('[data-jump-id]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const bm = bookmarks.find((b) => b.id === btn.getAttribute('data-jump-id'));
+        if (bm) jumpToBookmark(bm);
+      });
+    });
+    sheet.querySelectorAll('[data-remove-id]').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        removeBookmark(btn.getAttribute('data-remove-id'));
+      });
+    });
   }
 
   listenBtn.addEventListener('click', async () => {
@@ -539,7 +627,7 @@ export async function renderEpubListen(container, book, { onBack, onOpenSettings
    */
   function cleanup(options = {}) {
     const { keepPlayback = false, destroyEpub: shouldDestroy = true } = options;
-    closeChapterSheet();
+    closeSheet();
     if (!keepPlayback) {
       ttsRouter.stop();
       playbackManager.setPaused(true);

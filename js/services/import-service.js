@@ -1,4 +1,5 @@
 import jsmediatags from 'jsmediatags';
+import { parseBlob } from 'music-metadata';
 import { addBook, getAllBooks } from '../storage/library-db.js';
 import {
   openEpub,
@@ -23,11 +24,14 @@ import { generateFallbackCover } from '../utils/cover-fallback.js';
  * @param {File} file
  */
 export function isDuplicate(existing, file) {
-  return existing.some(
-    (b) =>
-      b.sourceFileName === file.name &&
-      b.sourceFileSize === file.size,
-  );
+  return existing.some((b) => {
+    if (b.tracks?.length) {
+      return b.tracks.some(
+        (t) => t.sourceFileName === file.name && t.sourceFileSize === file.size,
+      );
+    }
+    return b.sourceFileName === file.name && b.sourceFileSize === file.size;
+  });
 }
 
 /**
@@ -116,43 +120,122 @@ export async function importBooks(files, onProgress) {
 }
 
 /**
- * MP3/M4B/M4A import — jsmediatags reads both ID3 and MP4 metadata.
- * Stored as type 'mp3' (the app's generic audio type).
  * @param {File} file
+ * @returns {Promise<{ title: string, author: string, coverBlob: Blob|null }>}
  */
-async function importAudio(file) {
-  let title = file.name.replace(AUDIO_EXT_RE, '');
-  let author = 'Unknown Artist';
-  /** @type {Blob|null} */
-  let coverBlob = null;
-
-  await new Promise((resolve) => {
+function readAudioTags(file) {
+  return new Promise((resolve) => {
     jsmediatags.read(file, {
       onSuccess(tag) {
-        title = tag.tags.title || title;
-        author = tag.tags.artist || author;
-        coverBlob = pictureToBlob(tag.tags.picture);
-        resolve();
+        resolve({
+          title: tag.tags.title || null,
+          author: tag.tags.artist || null,
+          coverBlob: pictureToBlob(tag.tags.picture),
+        });
       },
       onError() {
-        resolve();
+        resolve({ title: null, author: null, coverBlob: null });
       },
     });
   });
+}
 
-  if (!coverBlob) {
-    coverBlob = await generateFallbackCover(title, author);
+const M4B_EXT_RE = /\.(m4b|m4a)$/i;
+
+/**
+ * Best-effort in-file chapter markers for an M4B/M4A — most audiobook
+ * tools (e.g. ffmpeg, m4b-tool) write the Nero `chpl` atom, which
+ * music-metadata cannot read; it only supports QuickTime chapter *tracks*.
+ * Returns `[]` whenever chapters aren't found or parsing fails, so callers
+ * can treat this purely as an enhancement — the book still imports and
+ * plays fine as a single track either way.
+ * @param {File} file
+ * @returns {Promise<import('../storage/library-db.js').FileChapter[]>}
+ */
+export async function readM4bChapters(file) {
+  if (!M4B_EXT_RE.test(file.name)) return [];
+  try {
+    const metadata = await parseBlob(file, { includeChapters: true, duration: false });
+    const chapters = metadata.format.chapters ?? [];
+    if (chapters.length < 2) return [];
+    return chapters.map((c, i) => ({
+      title: c.title || `Chapter ${i + 1}`,
+      startSeconds: c.timeScale ? c.start / c.timeScale : c.start,
+    }));
+  } catch {
+    return [];
   }
+}
+
+/**
+ * MP3/M4B/M4A import — jsmediatags reads both ID3 and MP4 metadata.
+ * Stored as type 'mp3' (the app's generic audio type), as a single-entry
+ * `tracks` array — see `importCombinedAudiobook` for the multi-track path.
+ * @param {File} file
+ */
+async function importAudio(file) {
+  const fallbackTitle = file.name.replace(AUDIO_EXT_RE, '');
+  const [tags, chapters] = await Promise.all([readAudioTags(file), readM4bChapters(file)]);
+  const title = tags.title || fallbackTitle;
+  const author = tags.author || 'Unknown Artist';
+  const coverBlob = tags.coverBlob || (await generateFallbackCover(title, author));
 
   return addBook({
     type: 'mp3',
     title,
     author,
-    fileBlob: file,
     coverBlob,
+    tracks: [
+      {
+        fileBlob: file,
+        sourceFileName: file.name,
+        sourceFileSize: file.size,
+        label: tags.title || fallbackTitle,
+        ...(chapters.length ? { chapters } : {}),
+      },
+    ],
+  });
+}
+
+/**
+ * Combine several audio files, selected together in one explicit action,
+ * into a single multi-track audiobook (one track per file, in the order
+ * given — callers should natural-sort first, see `naturalSortFiles`). This
+ * is opt-in and separate from the default `importBooks` flow, which always
+ * treats each selected audio file as its own book.
+ * @param {File[]} files in desired track order
+ * @param {{ title?: string, author?: string }} [overrides] falls back to the
+ *   first file's tags/filename when omitted
+ * @returns {Promise<Book>}
+ */
+export async function importCombinedAudiobook(files, overrides = {}) {
+  const tagsPerFile = await Promise.all(files.map(readAudioTags));
+  const first = tagsPerFile[0];
+  const fallbackTitle = files[0].name.replace(AUDIO_EXT_RE, '');
+  const title = overrides.title || first?.title || fallbackTitle;
+  const author = overrides.author || first?.author || 'Unknown Artist';
+  const coverBlob =
+    tagsPerFile.find((t) => t.coverBlob)?.coverBlob || (await generateFallbackCover(title, author));
+
+  const tracks = files.map((file, i) => ({
+    fileBlob: file,
     sourceFileName: file.name,
     sourceFileSize: file.size,
-  });
+    label: tagsPerFile[i].title || file.name.replace(AUDIO_EXT_RE, ''),
+  }));
+
+  return addBook({ type: 'mp3', title, author, coverBlob, tracks });
+}
+
+/**
+ * Natural sort (so "Chapter 2" sorts before "Chapter 10") — the default
+ * track order for `importCombinedAudiobook` before a user reorders anything.
+ * @param {File[]} files
+ * @returns {File[]}
+ */
+export function naturalSortFiles(files) {
+  const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
+  return [...files].sort((a, b) => collator.compare(a.name, b.name));
 }
 
 /**
