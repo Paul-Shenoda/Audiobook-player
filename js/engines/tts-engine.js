@@ -12,10 +12,12 @@ import {
   loadEpubProgress,
   estimatePercent,
   estimateSecondsRemaining,
+  estimateSecondsForChars,
+  estimateCharsForSeconds,
 } from '../tts/playback-state.js';
 import { loadTTSSettings, sharedTtsRouter } from '../tts/tts-router.js';
 import { createSleepTimer } from '../services/sleep-timer.js';
-import { getBook, updateBook } from '../storage/library-db.js';
+import { getBookFile, updateBook } from '../storage/library-db.js';
 
 /**
  * @typedef {import('../storage/library-db.js').Book} Book
@@ -23,23 +25,22 @@ import { getBook, updateBook } from '../storage/library-db.js';
  */
 
 /**
- * Safari has a long-standing IndexedDB bug where a Blob retrieved from a
- * previous read throws `NotFoundError: The object can not be found here`
- * when its contents are actually accessed — re-fetching the record fresh
- * and retrying once often succeeds where reusing the already-stale Blob
- * reference does not. Falls through to the original error if the retry
- * also fails (including if the book was deleted in the meantime).
+ * Read the EPUB file fresh from the `files` store each time (never from a
+ * Blob held on the book): Safari invalidates a Blob read earlier once its
+ * record is rewritten. The files store is never rewritten, but one retry
+ * covers a read that raced a write elsewhere.
  * @param {Book} currentBook
  * @returns {Promise<ArrayBuffer>}
  */
 async function readFileBlobArrayBuffer(currentBook) {
-  try {
-    return await currentBook.fileBlob.arrayBuffer();
-  } catch (err) {
-    if (!(err instanceof DOMException) || err.name !== 'NotFoundError') throw err;
-    const fresh = await getBook(currentBook.id);
-    if (!fresh?.fileBlob) throw err;
-    return await fresh.fileBlob.arrayBuffer();
+  for (let attempt = 0; ; attempt += 1) {
+    const blob = await getBookFile(currentBook.id);
+    if (!blob) throw new Error('The book file is missing from the library.');
+    try {
+      return await blob.arrayBuffer();
+    } catch (err) {
+      if (attempt > 0 || !(err instanceof DOMException) || err.name !== 'NotFoundError') throw err;
+    }
   }
 }
 
@@ -75,6 +76,17 @@ export function createTtsEngine(deps = {}) {
   /** @type {string[]} */
   let chunks = [];
   let chunkIndex = 0;
+  /**
+   * Last known character offset inside the current chunk: the latest word
+   * boundary, or where the chunk was (re)started. It is also where speech
+   * continues after pause/speed change, so it is 0 for voices without boundaries.
+   */
+  let knownChar = 0;
+  /** When knownChar was set; the ticker adds the time since then. */
+  let anchorTime = Date.now();
+  /** @type {ReturnType<typeof setInterval>|null} */
+  let ticker = null;
+  let lastCharSave = 0;
   let rate = 1;
   /** True from play() until pause, error or the end of the book. */
   let wantPlaying = false;
@@ -110,13 +122,55 @@ export function createTtsEngine(deps = {}) {
     });
   }
 
+  /** Where narration is now, as an offset in the current chunk. Between word boundaries it is interpolated. */
+  function currentChar() {
+    const len = chunks[chunkIndex]?.length ?? 0;
+    let pos = knownChar;
+    if (ticker) {
+      const fraction = router.getAudioFraction?.();
+      pos = fraction != null
+        ? fraction * len
+        : knownChar + estimateCharsForSeconds((Date.now() - anchorTime) / 1000, rate);
+    }
+    return Math.min(Math.max(pos, 0), len);
+  }
+
+  /** Seconds into the chapter: all earlier chunks plus the position in this one. */
+  function elapsedSeconds() {
+    let chars = currentChar();
+    for (let i = 0; i < chunkIndex; i += 1) chars += chunks[i].length;
+    return estimateSecondsForChars(chars, rate);
+  }
+
+  function setKnownChar(chars) {
+    knownChar = chars;
+    anchorTime = Date.now();
+  }
+
+  function startTicker() {
+    if (ticker || destroyed) return;
+    ticker = setInterval(() => emit({ chapterElapsed: elapsedSeconds() }), 1000);
+  }
+
+  /** Stop ticking; an AI voice's position is kept as the place to continue from. */
+  function stopTicker() {
+    if (ticker && router.getAudioFraction?.() != null) knownChar = currentChar();
+    if (ticker) clearInterval(ticker);
+    ticker = null;
+  }
+
   function publish(extra = {}) {
+    if (extra.status === 'playing') {
+      if (!ticker) anchorTime = Date.now();
+      startTicker();
+    } else if (extra.status) {
+      stopTicker();
+    }
     const duration = estimateSecondsRemaining(chunks, 0, rate);
-    const remaining = estimateSecondsRemaining(chunks, chunkIndex, rate);
     emit({
       rate,
       chapterIndex,
-      chapterElapsed: Math.max(0, duration - remaining),
+      chapterElapsed: elapsedSeconds(),
       chapterDuration: duration,
       bookPercent: estimatePercent(chapterIndex, totalChapters, chunkIndex, chunks.length),
       readAlong: { chunks, chunkIndex },
@@ -126,7 +180,8 @@ export function createTtsEngine(deps = {}) {
 
   function persistProgress() {
     const percent = estimatePercent(chapterIndex, totalChapters, chunkIndex, chunks.length);
-    saveEpubProgress(book.id, { chapterIndex, chunkIndex, charOffset: 0 });
+    saveEpubProgress(book.id, { chapterIndex, chunkIndex, charIndex: Math.round(knownChar) });
+    lastCharSave = Date.now();
     saveBook(book.id, {
       lastOpenedAt: Date.now(),
       progress: { chapterIndex, chunkIndex, percent },
@@ -144,22 +199,26 @@ export function createTtsEngine(deps = {}) {
     if (destroyed) return;
     chapterIndex = index;
     chunks = chunk(text);
+    knownChar = 0;
     chunkIndex = startChunk < 0 ? Math.max(chunks.length - 1, 0) : Math.min(startChunk, Math.max(chunks.length - 1, 0));
   }
 
-  async function speakFrom(index) {
+  async function speakFrom(index, startChar = 0) {
     if (!chunks.length) {
       wantPlaying = false;
       publish({ status: 'paused', error: 'This chapter has no readable text' });
       return;
     }
     chunkIndex = index;
-    await router.speak(chunks, index, { bookId: book.id, chapterIndex });
+    // Only Web Speech can start mid-chunk; AI voices play the chunk's audio from its start.
+    setKnownChar(router.aiProvider ? 0 : startChar);
+    await router.speak(chunks, index, { bookId: book.id, chapterIndex, startChar: knownChar });
   }
 
   /** Move to a position in the chapter that is already loaded. */
   async function positionAt(index) {
     chunkIndex = Math.min(Math.max(index, 0), Math.max(chunks.length - 1, 0));
+    setKnownChar(0);
     if (wantPlaying) {
       await speakFrom(chunkIndex);
     } else {
@@ -181,11 +240,24 @@ export function createTtsEngine(deps = {}) {
     else publish({ status: 'paused' });
   }
 
-  function handleChunkStart(index) {
+  function handleChunkStart(index, startChar = 0) {
     if (destroyed) return;
     chunkIndex = index;
+    setKnownChar(startChar);
     persistProgress();
     publish({ status: 'playing', error: null });
+  }
+
+  /** A word boundary from the voice: the exact position, so snap to it. */
+  function handleProgress(index, charIndex) {
+    if (destroyed || index !== chunkIndex) return;
+    setKnownChar(charIndex);
+    emit({ chapterElapsed: elapsedSeconds() });
+    // Remember the word for reopening, but not on every word.
+    if (Date.now() - lastCharSave >= 2000) {
+      saveEpubProgress(book.id, { chapterIndex, chunkIndex, charIndex });
+      lastCharSave = Date.now();
+    }
   }
 
   function handleComplete() {
@@ -235,6 +307,7 @@ export function createTtsEngine(deps = {}) {
       router.stop();
       router.configure({ ...loadSettings(), rate });
       router.onChunkStart = handleChunkStart;
+      router.onProgress = handleProgress;
       router.onComplete = handleComplete;
       router.onError = handleError;
 
@@ -259,6 +332,9 @@ export function createTtsEngine(deps = {}) {
       const saved = loadEpubProgress(book.id) ?? book.progress;
       const savedChunk = saved && saved.chapterIndex === chapterIndex ? saved.chunkIndex : 0;
       chunkIndex = Math.min(savedChunk, Math.max(chunks.length - 1, 0));
+      // Older saves have no charIndex: continue from the chunk start.
+      const savedChar = saved && saved.chapterIndex === chapterIndex && saved.chunkIndex === chunkIndex ? saved.charIndex : 0;
+      setKnownChar(Math.min(Math.max(savedChar ?? 0, 0), chunks[chunkIndex]?.length ?? 0));
       publish({ status: 'paused', error: null });
     },
 
@@ -271,7 +347,7 @@ export function createTtsEngine(deps = {}) {
           // Web Speech reports 'playing' from onChunkStart; the audio element has no such event.
           if (router.aiProvider) publish({ status: 'playing' });
         } else {
-          await speakFrom(chunkIndex);
+          await speakFrom(chunkIndex, knownChar);
         }
       });
     },
@@ -281,12 +357,15 @@ export function createTtsEngine(deps = {}) {
         wantPlaying = false;
         router.pause();
         publish({ status: 'paused' });
+        persistProgress();
       });
     },
 
     setRate(newRate) {
       const next = clampSpeed(newRate, EPUB_MAX_SPEED);
       if (next === rate) return;
+      // Speech re-starts from the last known word, so count time from here at the new speed.
+      setKnownChar(knownChar);
       rate = next;
       // The router re-speaks the current chunk at the new rate (Web Speech) or
       // sets audio.playbackRate (AI providers). It never writes the saved default.
@@ -331,8 +410,10 @@ export function createTtsEngine(deps = {}) {
       destroyed = true;
       wantPlaying = false;
       sleepTimer.destroy();
+      stopTicker();
       router.stop();
       router.onChunkStart = null;
+      router.onProgress = null;
       router.onComplete = null;
       router.onError = null;
       destroyBook(epub);

@@ -4,7 +4,7 @@ const STORAGE_PREFIX = 'epub-progress:';
  * @typedef {Object} EpubProgress
  * @property {number} chapterIndex
  * @property {number} chunkIndex
- * @property {number} charOffset
+ * @property {number} [charIndex] offset inside the chunk (absent in older saves = chunk start)
  */
 
 /**
@@ -67,4 +67,25 @@ export function estimateSecondsRemaining(chunks, chunkIndex, rate = 1) {
     .slice(chunkIndex)
     .reduce((sum, c) => sum + c.length, 0);
   return remainingChars / CHARS_PER_SECOND / Math.max(rate, 0.1);
+}
+
+/**
+ * Narration time for a number of characters, from the same estimate as
+ * estimateSecondsRemaining so elapsed + remaining always equals the duration.
+ * @param {number} chars
+ * @param {number} [rate]
+ * @returns {number} seconds
+ */
+export function estimateSecondsForChars(chars, rate = 1) {
+  return chars / CHARS_PER_SECOND / Math.max(rate, 0.1);
+}
+
+/**
+ * Inverse of estimateSecondsForChars.
+ * @param {number} seconds
+ * @param {number} [rate]
+ * @returns {number} characters
+ */
+export function estimateCharsForSeconds(seconds, rate = 1) {
+  return seconds * CHARS_PER_SECOND * Math.max(rate, 0.1);
 }

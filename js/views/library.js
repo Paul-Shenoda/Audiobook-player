@@ -16,7 +16,7 @@ import { icon } from '../utils/icons.js';
 import {
   renderCoverMarkup,
   hydrateCoverUrls,
-  revokeFallbackCoverUrl,
+  revokeCoverUrl,
   getBookCoverUrl,
   getFormatBadge,
 } from '../utils/cover-art.js';
@@ -267,7 +267,7 @@ export async function renderLibrary(container, { onOpenBook, onOpenSettings }) {
         if (!id) return;
         if (!confirm('Remove this book from your library?')) return;
         await clearBookCache(id);
-        revokeFallbackCoverUrl(id);
+        revokeCoverUrl(id);
         await deleteBook(id);
         showToast('Book removed', 'info');
         await renderLibrary(container, { onOpenBook, onOpenSettings });

@@ -92,14 +92,18 @@ export class TTSRouter {
     this.chunkIndex = 0;
     /** @type {HTMLAudioElement|null} */
     this.audio = null;
+    /** Chunk index the current audio element belongs to. */
+    this.audioChunk = undefined;
     this.playing = false;
     this.paused = false;
     this.bookId = '';
     this.chapterIndex = 0;
     /** @type {Map<string, Promise<Blob>>} in-flight synth requests by cache key */
     this.inflightSynth = new Map();
-    /** @type {((index: number) => void)|null} */
+    /** @type {((index: number, charIndex: number) => void)|null} */
     this.onChunkStart = null;
+    /** @type {((index: number, charIndex: number) => void)|null} Web Speech word boundary */
+    this.onProgress = null;
     /** @type {(() => void)|null} */
     this.onComplete = null;
     /** @type {((error: Error) => void)|null} */
@@ -130,7 +134,7 @@ export class TTSRouter {
   /**
    * @param {string[]} chunks
    * @param {number} startIndex
-   * @param {{ bookId?: string, chapterIndex?: number }} context
+   * @param {{ bookId?: string, chapterIndex?: number, startChar?: number }} context  startChar only applies to Web Speech
    */
   async speak(chunks, startIndex = 0, context = {}) {
     this.stop(false);
@@ -144,7 +148,7 @@ export class TTSRouter {
     if (this.aiProvider) {
       await this.playAIChunk();
     } else {
-      this.playWebSpeech(startIndex);
+      this.playWebSpeech(startIndex, context.startChar ?? 0);
     }
   }
 
@@ -165,12 +169,13 @@ export class TTSRouter {
     this.playWebSpeech(startIndex);
   }
 
-  playWebSpeech(startIndex) {
+  playWebSpeech(startIndex, startChar = 0) {
     if (this.settings.webSpeechVoiceId) {
       this.webSpeech.setVoice(this.settings.webSpeechVoiceId);
     }
     this.webSpeech.setRate(this.settings.rate);
-    this.webSpeech.onChunkStart = (index) => this.onChunkStart?.(index);
+    this.webSpeech.onChunkStart = (index, charIndex) => this.onChunkStart?.(index, charIndex);
+    this.webSpeech.onProgress = (index, charIndex) => this.onProgress?.(index, charIndex);
     this.webSpeech.onComplete = () => {
       this.playing = false;
       this.onComplete?.();
@@ -179,7 +184,7 @@ export class TTSRouter {
       this.playing = false;
       this.onError?.(err);
     };
-    this.webSpeech.speak(this.chunks, startIndex);
+    this.webSpeech.speak(this.chunks, startIndex, startChar);
   }
 
   /**
@@ -241,6 +246,7 @@ export class TTSRouter {
       }
 
       this.audio = new Audio(URL.createObjectURL(blob));
+      this.audioChunk = this.chunkIndex;
       this.audio.playbackRate = this.settings.rate;
 
       this.audio.onended = () => {
@@ -341,6 +347,19 @@ export class TTSRouter {
       return this.chunkIndex;
     }
     return this.webSpeech.getCurrentChunkIndex();
+  }
+
+  /**
+   * How far into the current chunk's audio the AI voice is (0-1), or null when
+   * there is no audio with a known length.
+   * @returns {number|null}
+   */
+  getAudioFraction() {
+    const a = this.audio;
+    // The old chunk's audio lingers until the next one is fetched; its position is not ours.
+    if (!this.aiProvider || !a || !(a.duration > 0)) return null;
+    if (this.audioChunk !== undefined && this.audioChunk !== this.chunkIndex) return null;
+    return Math.min(Math.max(a.currentTime / a.duration, 0), 1);
   }
 
   isPaused() {

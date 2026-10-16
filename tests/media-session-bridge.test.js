@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { bridgeMediaSession } from '../js/services/media-session-bridge.js';
 import { makeStore } from './helpers-store.js';
 
-vi.mock('../js/storage/library-db.js', () => ({ getCoverObjectUrl: () => 'blob:cover' }));
+vi.mock('../js/storage/library-db.js', () => ({ getCoverBlob: () => Promise.resolve(new Blob(['x'])) }));
 
 function fakeSession() {
   const handlers = {};

@@ -42,13 +42,19 @@ body:has(.np) .mini-player-bar {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    height: 48px;
+    flex: none;
+    min-height: 48px;
+    gap: var(--space-2);
 }
 
 .np-chapter {
     font-size: 0.875rem;
     color: var(--ink-2);
     text-align: center;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .np-icon-btn,
@@ -63,15 +69,16 @@ body:has(.np) .mini-player-bar {
 }
 
 .np-stage {
-    height: 290px;
+    height: clamp(180px, 36vh, 290px);
+    flex: none;
     display: flex;
     align-items: center;
     justify-content: center;
 }
 
 .np-cover {
-    width: 282px;
-    height: 282px;
+    width: clamp(180px, 34vh, 282px);
+    height: clamp(180px, 34vh, 282px);
     border-radius: var(--r-16);
     overflow: hidden;
     background: var(--cover-teal);
@@ -92,7 +99,7 @@ body:has(.np) .mini-player-bar {
 
 .np-readalong {
     width: 100%;
-    height: 290px;
+    height: clamp(180px, 36vh, 290px);
     padding: var(--space-5) var(--space-4) var(--space-4);
     border-radius: var(--r-16);
     background: var(--surface);
@@ -145,6 +152,17 @@ body:has(.np) .mini-player-bar {
     letter-spacing: -0.02em;
     line-height: 1.05;
     overflow-wrap: anywhere;
+    /* At most two lines, then an ellipsis; the full title is in the title attribute. */
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    overflow: hidden;
+}
+
+.np-title--long {
+    font-size: 1.25rem;
+    line-height: 1.15;
 }
 
 .np-author {

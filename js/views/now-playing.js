@@ -6,7 +6,7 @@ import { icon } from '../utils/icons.js';
 import { escapeHtml } from '../utils/escape-html.js';
 import { formatTime } from '../utils/format-time.js';
 import { SPEED_STEPS, EPUB_MAX_SPEED } from '../utils/playback-speed.js';
-import { renderCoverMarkup, getBookCoverUrl, ensureFallbackCoverUrl } from '../utils/cover-art.js';
+import { renderCoverMarkup, getBookCoverUrl, ensureCoverUrl } from '../utils/cover-art.js';
 import { unlockMediaForAutoplay } from '../utils/audio-unlock.js';
 import { showToast } from '../utils/toast.js';
 import { sharedTtsRouter } from '../tts/tts-router.js';
@@ -16,6 +16,8 @@ import { sharedTtsRouter } from '../tts/tts-router.js';
  * @typedef {import('../services/player-store.js').PlayerState} PlayerState
  */
 
+/** Titles longer than this get a smaller font so two lines are enough. */
+const LONG_TITLE_CHARS = 40;
 const SKIP_BACK_S = 15;
 const SKIP_FORWARD_S = 30;
 const KEY_SEEK_S = 10;
@@ -92,7 +94,7 @@ export function renderNowPlaying(container, book, { onClose, onOpenSettings, sto
 
       <div class="np-meta">
         <div class="np-meta-text">
-          <h1 class="np-title">${escapeHtml(book.title)}</h1>
+          <h1 class="np-title${book.title.length > LONG_TITLE_CHARS ? ' np-title--long' : ''}" title="${escapeHtml(book.title)}">${escapeHtml(book.title)}</h1>
           <p class="np-author" id="np-author"></p>
           <p class="np-status" id="np-status" role="status"></p>
         </div>
@@ -148,7 +150,7 @@ export function renderNowPlaying(container, book, { onClose, onOpenSettings, sto
   // ---- Cover (a generated cover arrives a moment later for books without art) ----
 
   if (!getBookCoverUrl(book)) {
-    ensureFallbackCoverUrl(book).then(() => {
+    ensureCoverUrl(book).then(() => {
       const url = getBookCoverUrl(book);
       if (gone || !url) return;
       $('np-cover').innerHTML = `<img src="${url}" alt="" class="np-cover-img">`;

@@ -2,7 +2,7 @@ import { playerStore } from '../services/player-store.js';
 import { icon } from '../utils/icons.js';
 import {
   getBookCoverUrl,
-  ensureFallbackCoverUrl,
+  ensureCoverUrl,
 } from '../utils/cover-art.js';
 
 /**
@@ -50,7 +50,7 @@ export function mountMiniPlayer(container, { onOpenBook, store = playerStore }) 
   `;
 
     if (!coverUrl) {
-      ensureFallbackCoverUrl(book).then(() => {
+      ensureCoverUrl(book).then(() => {
         const img = container.querySelector('.mini-cover--ph');
         const url = getBookCoverUrl(book);
         if (img && url) {

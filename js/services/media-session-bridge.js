@@ -1,4 +1,4 @@
-import { getBookCoverUrl } from '../utils/cover-art.js';
+import { getBookCoverUrl, ensureCoverUrl } from '../utils/cover-art.js';
 
 const SEEK_BACK_S = 15;
 const SEEK_FORWARD_S = 30;
@@ -42,19 +42,33 @@ export function bridgeMediaSession(store, { mediaSession = globalThis.navigator?
   };
   for (const action of ACTIONS) setHandler(action, handlers[action]);
 
+  /** @param {import('../storage/library-db.js').Book|null} book */
+  const setMetadata = book => {
+    const coverUrl = book ? getBookCoverUrl(book) : null;
+    mediaSession.metadata = book
+      ? new MediaMetadata({
+          title: book.title,
+          artist: book.author,
+          album: 'Audiobook Library',
+          artwork: coverUrl ? [{ src: coverUrl, sizes: '512x512' }] : [],
+        })
+      : null;
+  };
+
   let bookId = null;
   const stop = store.subscribe(s => {
     if (s.book?.id !== bookId) {
       bookId = s.book?.id ?? null;
-      const coverUrl = s.book ? getBookCoverUrl(s.book) : null;
-      mediaSession.metadata = s.book
-        ? new MediaMetadata({
-            title: s.book.title,
-            artist: s.book.author,
-            album: 'Audiobook Library',
-            artwork: coverUrl ? [{ src: coverUrl, sizes: '512x512', type: s.book.coverBlob?.type || 'image/png' }] : [],
+      setMetadata(s.book);
+      // The cover is read from the database a moment after the title shows.
+      if (s.book && !getBookCoverUrl(s.book)) {
+        const forBook = s.book;
+        ensureCoverUrl(forBook)
+          .then(() => {
+            if (bookId === forBook.id) setMetadata(forBook);
           })
-        : null;
+          .catch(() => {});
+      }
     }
     mediaSession.playbackState = !s.book ? 'none' : s.status === 'playing' ? 'playing' : 'paused';
 

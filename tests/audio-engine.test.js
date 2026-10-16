@@ -32,14 +32,15 @@ function makeFakeAudio() {
   return audio;
 }
 
-const track = (label, extra = {}) => ({ fileBlob: new Blob(['x']), label, ...extra });
+const track = (label, extra = {}) => ({ fileKey: `key:${label}`, label, ...extra });
 
-function setup(bookOverrides = {}, depOverrides = {}) {
+async function setup(bookOverrides = {}, depOverrides = {}) {
   const audio = makeFakeAudio();
   const updateBook = vi.fn(() => Promise.resolve());
+  const getTrackFile = vi.fn(() => Promise.resolve(new Blob(['x'])));
   const createUrl = vi.fn(() => 'blob:fake');
   const revokeUrl = vi.fn();
-  const engine = createAudioEngine({ audio, updateBook, createUrl, revokeUrl, ...depOverrides });
+  const engine = createAudioEngine({ audio, updateBook, getTrackFile, createUrl, revokeUrl, ...depOverrides });
   const states = [];
   const emit = partial => states.push(partial);
   const book = {
@@ -51,7 +52,13 @@ function setup(bookOverrides = {}, depOverrides = {}) {
   };
   const last = key => [...states].reverse().find(s => key in s)?.[key];
   engine.load(book, emit);
-  return { audio, engine, states, emit, updateBook, createUrl, revokeUrl, book, last };
+  await flush();
+  return { audio, engine, states, emit, updateBook, getTrackFile, createUrl, revokeUrl, book, last };
+}
+
+/** Let the engine's database read for the current file finish. */
+async function flush() {
+  for (let i = 0; i < 5; i += 1) await Promise.resolve();
 }
 
 function ready(audio, duration = 1000) {
@@ -60,14 +67,14 @@ function ready(audio, duration = 1000) {
 }
 
 describe('createAudioEngine status from <audio> events', () => {
-  it('loads paused with the saved rate', () => {
-    const { last } = setup({ playbackRate: 1.5 });
+  it('loads paused with the saved rate', async () => {
+    const { last } = await setup({ playbackRate: 1.5 });
     expect(last('status')).toBe('paused');
     expect(last('rate')).toBe(1.5);
   });
 
-  it('emits playing on the playing event and paused on pause', () => {
-    const { audio, engine, last } = setup();
+  it('emits playing on the playing event and paused on pause', async () => {
+    const { audio, engine, last } = await setup();
     ready(audio);
     engine.play();
     expect(last('status')).toBe('playing');
@@ -76,7 +83,7 @@ describe('createAudioEngine status from <audio> events', () => {
   });
 
   it('does not emit playing when play() rejects', async () => {
-    const { audio, engine, states } = setup();
+    const { audio, engine, states } = await setup();
     ready(audio);
     audio.playResult = 'reject';
     engine.play();
@@ -86,8 +93,8 @@ describe('createAudioEngine status from <audio> events', () => {
     expect(states.at(-1).status).toBe('paused');
   });
 
-  it('stays playing while buffering, so the Pause button still pauses', () => {
-    const { audio, engine, last } = setup();
+  it('stays playing while buffering, so the Pause button still pauses', async () => {
+    const { audio, engine, last } = await setup();
     ready(audio);
     engine.play();
     audio.dispatchEvent(new Event('playing'));
@@ -95,15 +102,15 @@ describe('createAudioEngine status from <audio> events', () => {
     expect(last('status')).toBe('playing');
   });
 
-  it('emits error on the error event', () => {
-    const { audio, last } = setup();
+  it('emits error on the error event', async () => {
+    const { audio, last } = await setup();
     audio.dispatchEvent(new Event('error'));
     expect(last('status')).toBe('error');
     expect(last('error')).toBeTruthy();
   });
 
-  it('marks the book finished and pauses when the last track ends', () => {
-    const { audio, engine, last, updateBook } = setup();
+  it('marks the book finished and pauses when the last track ends', async () => {
+    const { audio, engine, last, updateBook } = await setup();
     ready(audio);
     engine.play();
     audio.dispatchEvent(new Event('ended'));
@@ -111,34 +118,35 @@ describe('createAudioEngine status from <audio> events', () => {
     expect(updateBook).toHaveBeenCalledWith('b1', expect.objectContaining({ finishedAt: expect.any(Number) }));
   });
 
-  it('rolls into the next track when one ends', () => {
-    const { audio, engine, last } = setup({ tracks: [track('A'), track('B')] });
+  it('rolls into the next track when one ends', async () => {
+    const { audio, engine, last } = await setup({ tracks: [track('A'), track('B')] });
     ready(audio);
     engine.play();
     audio.dispatchEvent(new Event('ended'));
     expect(last('chapterIndex')).toBe(1);
+    await flush();
     expect(audio.play).toHaveBeenCalledTimes(2);
   });
 });
 
 describe('speed', () => {
-  it('re-applies the book speed when the browser resets it on playing', () => {
-    const { audio, engine } = setup({ playbackRate: 1.5 });
+  it('re-applies the book speed when the browser resets it on playing', async () => {
+    const { audio, engine } = await setup({ playbackRate: 1.5 });
     ready(audio);
     audio.playbackRate = 1; // iOS reset
     engine.play(); // fake dispatches play + playing
     expect(audio.playbackRate).toBe(1.5);
   });
 
-  it('re-applies on ratechange', () => {
-    const { audio } = setup({ playbackRate: 2 });
+  it('re-applies on ratechange', async () => {
+    const { audio } = await setup({ playbackRate: 2 });
     audio.playbackRate = 1;
     audio.dispatchEvent(new Event('ratechange'));
     expect(audio.playbackRate).toBe(2);
   });
 
-  it('setRate clamps, applies, saves and emits', () => {
-    const { audio, engine, updateBook, last } = setup();
+  it('setRate clamps, applies, saves and emits', async () => {
+    const { audio, engine, updateBook, last } = await setup();
     engine.setRate(1.3);
     expect(audio.playbackRate).toBe(1.25);
     expect(audio.defaultPlaybackRate).toBe(1.25);
@@ -148,8 +156,8 @@ describe('speed', () => {
 });
 
 describe('skip and seek', () => {
-  it('skips within the file and clamps at both ends', () => {
-    const { audio, engine } = setup();
+  it('skips within the file and clamps at both ends', async () => {
+    const { audio, engine } = await setup();
     ready(audio, 100);
     audio.currentTime = 50;
     engine.skip(30);
@@ -161,17 +169,18 @@ describe('skip and seek', () => {
     expect(audio.currentTime).toBe(0);
   });
 
-  it('crosses into the next track carrying the overflow', () => {
-    const { audio, engine, last } = setup({ tracks: [track('A'), track('B')] });
+  it('crosses into the next track carrying the overflow', async () => {
+    const { audio, engine, last } = await setup({ tracks: [track('A'), track('B')] });
     ready(audio, 100);
     audio.currentTime = 95;
     engine.skip(30);
+    await flush();
     expect(last('chapterIndex')).toBe(1);
     expect(audio.currentTime).toBe(25);
   });
 
-  it('crosses back into the previous track near its end', () => {
-    const { audio, engine, last } = setup({
+  it('crosses back into the previous track near its end', async () => {
+    const { audio, engine, last } = await setup({
       tracks: [track('A'), track('B')],
       progress: { trackIndex: 1, seconds: 0 },
     });
@@ -179,23 +188,24 @@ describe('skip and seek', () => {
     audio.currentTime = 5;
     engine.skip(-15);
     expect(last('chapterIndex')).toBe(0);
+    await flush();
     ready(audio, 200);
     expect(audio.currentTime).toBe(190);
   });
 
-  it('seekInChapter seeks a fraction of the file', () => {
-    const { audio, engine } = setup();
+  it('seekInChapter seeks a fraction of the file', async () => {
+    const { audio, engine } = await setup();
     ready(audio, 200);
     engine.seekInChapter(0.25);
     expect(audio.currentTime).toBe(50);
   });
 
-  it('seekInChapter stays inside an embedded chapter', () => {
+  it('seekInChapter stays inside an embedded chapter', async () => {
     const chapters = [
       { title: 'C1', startSeconds: 0 },
       { title: 'C2', startSeconds: 100 },
     ];
-    const { audio, engine, last } = setup({ tracks: [track('A', { chapters })] });
+    const { audio, engine, last } = await setup({ tracks: [track('A', { chapters })] });
     ready(audio, 300);
     engine.goToChapter(1);
     expect(audio.currentTime).toBe(100);
@@ -209,8 +219,8 @@ describe('skip and seek', () => {
     ]);
   });
 
-  it('emits chapter time and book percent on timeupdate', () => {
-    const { audio, last } = setup({ tracks: [track('A'), track('B')] });
+  it('emits chapter time and book percent on timeupdate', async () => {
+    const { audio, last } = await setup({ tracks: [track('A'), track('B')] });
     ready(audio, 100);
     audio.currentTime = 50;
     audio.dispatchEvent(new Event('timeupdate'));
@@ -221,13 +231,13 @@ describe('skip and seek', () => {
 });
 
 describe('resume and progress', () => {
-  it('resumes 10 s before the saved position', () => {
-    const { audio } = setup({ progress: { trackIndex: 0, seconds: 120 } });
+  it('resumes 10 s before the saved position', async () => {
+    const { audio } = await setup({ progress: { trackIndex: 0, seconds: 120 } });
     expect(audio.currentTime).toBe(110);
   });
 
-  it('saves nothing until the book has played, then saves on pause', () => {
-    const { audio, engine, updateBook } = setup();
+  it('saves nothing until the book has played, then saves on pause', async () => {
+    const { audio, engine, updateBook } = await setup();
     ready(audio, 100);
     audio.dispatchEvent(new Event('seeked'));
     expect(updateBook).not.toHaveBeenCalled();
@@ -242,8 +252,8 @@ describe('resume and progress', () => {
 });
 
 describe('destroy', () => {
-  it('pauses, revokes the URL, flushes progress and stops listening', () => {
-    const { audio, engine, revokeUrl, updateBook, states } = setup();
+  it('pauses, revokes the URL, flushes progress and stops listening', async () => {
+    const { audio, engine, revokeUrl, updateBook, states } = await setup();
     ready(audio, 100);
     engine.play();
     audio.currentTime = 40;
@@ -264,10 +274,10 @@ describe('destroy', () => {
 });
 
 describe('sleep timer', () => {
-  it('a timed sleep reports its end time, then pauses and clears when it runs out', () => {
+  it('a timed sleep reports its end time, then pauses and clears when it runs out', async () => {
     vi.useFakeTimers();
     try {
-      const { audio, engine, last } = setup();
+      const { audio, engine, last } = await setup();
       ready(audio);
       engine.play();
       engine.setSleep('15');
@@ -282,8 +292,8 @@ describe('sleep timer', () => {
     }
   });
 
-  it('end of chapter parks at the next track instead of rolling on', () => {
-    const { audio, engine, last } = setup({ tracks: [track('A'), track('B')] });
+  it('end of chapter parks at the next track instead of rolling on', async () => {
+    const { audio, engine, last } = await setup({ tracks: [track('A'), track('B')] });
     ready(audio);
     engine.play();
     engine.setSleep('chapter');
@@ -295,12 +305,12 @@ describe('sleep timer', () => {
     expect(audio.play).toHaveBeenCalledTimes(1);
   });
 
-  it('end of chapter stops when playback crosses an embedded chapter marker', () => {
+  it('end of chapter stops when playback crosses an embedded chapter marker', async () => {
     const chapters = [
       { title: 'C1', startSeconds: 0 },
       { title: 'C2', startSeconds: 100 },
     ];
-    const { audio, engine, last } = setup({ tracks: [track('A', { chapters })] });
+    const { audio, engine, last } = await setup({ tracks: [track('A', { chapters })] });
     ready(audio, 300);
     engine.play();
     engine.setSleep('chapter');
@@ -312,5 +322,37 @@ describe('sleep timer', () => {
     expect(audio.paused).toBe(true);
     expect(audio.currentTime).toBe(100);
     expect(last('sleep')).toEqual({ mode: 'off' });
+  });
+});
+
+describe('reading track files', () => {
+  it('reads each track fresh from the database using its key when it loads', async () => {
+    const { audio, engine, getTrackFile, createUrl } = await setup({ tracks: [track('A'), track('B')] });
+    expect(getTrackFile).toHaveBeenLastCalledWith('b1', 'key:A');
+    expect(createUrl).toHaveBeenCalledTimes(1);
+    ready(audio);
+    engine.play();
+    audio.dispatchEvent(new Event('ended'));
+    await flush();
+    expect(getTrackFile).toHaveBeenCalledTimes(2);
+    expect(getTrackFile).toHaveBeenLastCalledWith('b1', 'key:B');
+    expect(createUrl).toHaveBeenCalledTimes(2);
+  });
+
+  it('reports an error when the file is missing, and drops a read for a track it already left', async () => {
+    const missing = await setup({}, { getTrackFile: vi.fn(() => Promise.resolve(undefined)) });
+    expect(missing.last('status')).toBe('error');
+
+    let release;
+    const slow = vi.fn(() => new Promise(resolve => { release = resolve; }));
+    const t = await setup({ tracks: [track('A'), track('B')] }, { getTrackFile: slow });
+    const firstRelease = release;
+    t.engine.goToChapter(1);
+    firstRelease(new Blob(['a']));
+    await flush();
+    expect(t.createUrl).not.toHaveBeenCalled();
+    release(new Blob(['b']));
+    await flush();
+    expect(t.createUrl).toHaveBeenCalledTimes(1);
   });
 });

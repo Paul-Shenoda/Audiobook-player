@@ -24,7 +24,7 @@ it but read far less frequently.
 ## Shape
 
 - `loadEpubProgress(bookId)` / `saveEpubProgress(bookId, progress)` /
-  `clearEpubProgress(bookId)` — `{chapterIndex, chunkIndex, charOffset}`
+  `clearEpubProgress(bookId)` — `{chapterIndex, chunkIndex, charIndex}`
 - `estimatePercent(chapterIndex, totalChapters, chunkIndex, totalChunks)` —
   the book-wide percent shown next to the chapter selector
 - `estimateSecondsRemaining(chunks, chunkIndex, rate)` — the "X min left in

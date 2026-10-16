@@ -18,7 +18,7 @@ describe('normalizeBook', () => {
 
     expect(normalized.tracks).toHaveLength(1);
     expect(normalized.tracks[0]).toMatchObject({
-      fileBlob: legacy.fileBlob,
+      fileKey: 'b1:track:0',
       sourceFileName: 'old-book.mp3',
       sourceFileSize: 12345,
       label: 'Old Book',

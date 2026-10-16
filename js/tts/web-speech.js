@@ -25,8 +25,17 @@ export class WebSpeechTTS {
      * if it no longer matches (Safari fires `end` after `cancel()`).
      */
     this.generation = 0;
-    /** @type {((index: number) => void)|null} */
+    /**
+     * Character offset, within the full current chunk, of the last word the
+     * voice reported (or where this chunk was started from). Pause, resume and
+     * speed changes speak again from here. Stays 0 for voices that send no
+     * boundary events, so those restart the chunk.
+     */
+    this.charIndex = 0;
+    /** @type {((index: number, charIndex: number) => void)|null} index of the chunk, and the offset it (re)started from */
     this.onChunkStart = null;
+    /** @type {((index: number, charIndex: number) => void)|null} a word boundary: chunk index and offset in that chunk */
+    this.onProgress = null;
     /** @type {(() => void)|null} */
     this.onComplete = null;
     /** @type {((error: Error) => void)|null} */
@@ -36,11 +45,13 @@ export class WebSpeechTTS {
   /**
    * @param {string[]} chunks
    * @param {number} [startIndex=0]
+   * @param {number} [startChar=0] offset inside the first chunk to begin from
    */
-  speak(chunks, startIndex = 0) {
+  speak(chunks, startIndex = 0, startChar = 0) {
     this.stop(false);
     this.queue = chunks;
     this.queueIndex = startIndex;
+    this.charIndex = startChar;
     this.paused = false;
     this.speaking = true;
     this.speakCurrent();
@@ -53,7 +64,12 @@ export class WebSpeechTTS {
       return;
     }
 
-    const text = this.queue[this.queueIndex];
+    const full = this.queue[this.queueIndex];
+    // Say only the rest of the chunk. Never start on nothing: an empty
+    // utterance may fire no events at all.
+    if (this.charIndex <= 0 || full.slice(this.charIndex).trim() === '') this.charIndex = 0;
+    const offset = this.charIndex;
+    const text = full.slice(offset);
     const generation = ++this.generation;
     this.currentUtterance = new SpeechSynthesisUtterance(text);
     this.currentUtterance.rate = this.preferredRate ?? 1;
@@ -69,12 +85,20 @@ export class WebSpeechTTS {
 
     this.currentUtterance.onstart = () => {
       if (generation !== this.generation) return;
-      this.onChunkStart?.(this.queueIndex);
+      this.onChunkStart?.(this.queueIndex, offset);
+    };
+
+    this.currentUtterance.onboundary = (event) => {
+      if (generation !== this.generation) return;
+      if (event.name && event.name !== 'word') return;
+      this.charIndex = offset + (event.charIndex ?? 0);
+      this.onProgress?.(this.queueIndex, this.charIndex);
     };
 
     this.currentUtterance.onend = () => {
       if (generation !== this.generation || this.paused) return;
       this.queueIndex += 1;
+      this.charIndex = 0;
       this.speakCurrent();
     };
 
@@ -96,7 +120,8 @@ export class WebSpeechTTS {
 
   /**
    * iOS pause()/resume() is unreliable, so pausing cancels the utterance and
-   * remembers the chunk; resume() speaks that chunk again from its start.
+   * remembers the chunk and the last word reached; resume() speaks from that word
+   * (or the chunk start for voices that send no word boundaries).
    */
   pause() {
     if (!this.speaking || this.paused) return;
@@ -121,6 +146,7 @@ export class WebSpeechTTS {
     if (clearQueue) {
       this.queue = [];
       this.queueIndex = 0;
+      this.charIndex = 0;
     }
   }
 
@@ -151,7 +177,7 @@ export class WebSpeechTTS {
   setRate(rate) {
     this.preferredRate = rate;
     // An utterance's rate is fixed once it starts, so while speaking, cancel it
-    // and say the current chunk again at the new rate.
+    // and say the rest of the current chunk again at the new rate.
     if (this.speaking && !this.paused && this.currentUtterance) {
       this.cancelCurrent();
       this.speakCurrent();
@@ -160,6 +186,10 @@ export class WebSpeechTTS {
 
   getCurrentChunkIndex() {
     return this.queueIndex;
+  }
+
+  getCharIndex() {
+    return this.charIndex;
   }
 
   isPaused() {

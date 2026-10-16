@@ -1,4 +1,4 @@
-import { updateBook as defaultUpdateBook } from '../storage/library-db.js';
+import { updateBook as defaultUpdateBook, getTrackFile as defaultGetTrackFile } from '../storage/library-db.js';
 import { createManagedObjectUrl, revokeManagedObjectUrl } from '../utils/object-url.js';
 import { estimatePercent } from '../tts/playback-state.js';
 import { createProgressSaver } from '../services/progress-saver.js';
@@ -25,6 +25,7 @@ const LONG_PAUSE_MS = 5 * 60 * 1000;
  * @param {{
  *   audio?: HTMLAudioElement,
  *   updateBook?: typeof defaultUpdateBook,
+ *   getTrackFile?: typeof defaultGetTrackFile,
  *   createUrl?: (blob: Blob) => string,
  *   revokeUrl?: () => void,
  *   now?: () => number,
@@ -34,6 +35,7 @@ const LONG_PAUSE_MS = 5 * 60 * 1000;
 export function createAudioEngine({
   audio = new Audio(),
   updateBook = defaultUpdateBook,
+  getTrackFile = defaultGetTrackFile,
   createUrl = createManagedObjectUrl,
   revokeUrl = revokeManagedObjectUrl,
   now = Date.now,
@@ -44,6 +46,9 @@ export function createAudioEngine({
   let destroyed = false;
   let tracks = [];
   let trackIndex = 0;
+  // Bumped by every loadTrack, so a slow file read for a track we've already
+  // left behind is dropped instead of replacing the current one.
+  let loadToken = 0;
   let rate = 1;
   let fileChapters = [];
   let hasTrackChapters = false;
@@ -140,8 +145,11 @@ export function createAudioEngine({
   }
 
   /**
-   * Load a file by index. Setting both rates matters: browsers reset
-   * playbackRate to defaultPlaybackRate whenever the source changes.
+   * Load a file by index. The file's Blob is read fresh from the database
+   * right now (never held from an earlier read: Safari invalidates those), so
+   * the source is attached a moment later. Setting both rates matters:
+   * browsers reset playbackRate to defaultPlaybackRate whenever the source
+   * changes.
    * @param {number} index
    * @param {{ seconds?: number, autoplay?: boolean, onMetadata?: (duration: number) => number }} [options]
    *   onMetadata returns the start time once the file's length is known
@@ -149,22 +157,33 @@ export function createAudioEngine({
   function loadTrack(index, { seconds = 0, autoplay = false, onMetadata } = {}) {
     trackIndex = Math.min(Math.max(index, 0), tracks.length - 1);
     metaLoaded = false;
-    audio.defaultPlaybackRate = rate;
-    audio.src = createUrl(tracks[trackIndex].fileBlob);
-    audio.playbackRate = rate;
-    audio.currentTime = seconds;
-    if (onMetadata) {
-      const onLoaded = () => {
-        audio.removeEventListener('loadedmetadata', onLoaded);
-        audio.currentTime = onMetadata(audio.duration);
-      };
-      audio.addEventListener('loadedmetadata', onLoaded);
-    }
+    const token = ++loadToken;
+    const bookId = book.id;
+    const track = tracks[trackIndex];
+    if (autoplay) emit({ status: 'loading' });
     publish({ withChapters: true });
-    if (autoplay) {
-      emit({ status: 'loading' });
-      startPlayback();
-    }
+
+    getTrackFile(bookId, track.fileKey)
+      .then(blob => {
+        if (destroyed || token !== loadToken) return;
+        if (!blob) throw new Error('This audio file is missing from the library.');
+        audio.defaultPlaybackRate = rate;
+        audio.src = createUrl(blob);
+        audio.playbackRate = rate;
+        audio.currentTime = seconds;
+        if (onMetadata) {
+          const onLoaded = () => {
+            audio.removeEventListener('loadedmetadata', onLoaded);
+            audio.currentTime = onMetadata(audio.duration);
+          };
+          audio.addEventListener('loadedmetadata', onLoaded);
+        }
+        if (autoplay) startPlayback();
+      })
+      .catch(err => {
+        if (destroyed || token !== loadToken) return;
+        emit({ status: 'error', error: err instanceof Error ? err.message : 'This audio file could not be loaded.' });
+      });
   }
 
   function startPlayback() {

@@ -61,13 +61,10 @@ async function openBook(book) {
   // Already on screen (e.g. tapping the mini player for the open book): keep it.
   // Rebuilding the EPUB reader here hit Safari's stale IndexedDB Blob error.
   if (lifecycle.isShowing(book.id)) return;
-  // The mini player holds the object from when the book was first opened, so
-  // refresh its speed and position from the database. Keep the original file
-  // Blob(s): a Blob read now can be stale by the time Safari reads it.
-  const saved = await getBook(book.id).catch(() => null);
-  const current = saved
-    ? { ...book, progress: saved.progress, playbackRate: saved.playbackRate, bookmarks: saved.bookmarks }
-    : book;
+  // The mini player holds the book from when it was first opened, so read the
+  // current record (speed, position, bookmarks). It carries no file Blobs;
+  // engines read those fresh from the database.
+  const current = (await getBook(book.id).catch(() => null)) ?? book;
   showNowPlaying(current);
 }
 

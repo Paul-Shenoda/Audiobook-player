@@ -23,6 +23,10 @@ function installFakeSpeech({ autoStart = true } = {}) {
     start() {
       fake.current?.onstart?.();
     },
+    /** The voice reports a word boundary. */
+    boundary(charIndex) {
+      fake.current?.onboundary?.({ charIndex, name: 'word' });
+    },
     /** The current utterance finishes naturally. */
     finish() {
       const u = fake.current;
@@ -392,5 +396,146 @@ describe('destroy', () => {
     t.engine.destroy();
     expect(t.d.destroyEpub).toHaveBeenCalledWith(t.d.epub);
     expect(t.fake.cancels).toBeGreaterThan(0);
+  });
+});
+
+describe('word position', () => {
+  it('re-speaks from the current word on a speed change', async () => {
+    const t = await setup();
+    await t.run(() => t.engine.play());
+    t.fake.boundary(100);
+    await t.run(() => t.engine.setRate(1.5));
+    expect(t.fake.texts().at(-1)).toBe(CHAPTERS[1][0].slice(100));
+  });
+
+  it('resumes from the current word after pause', async () => {
+    const t = await setup();
+    await t.run(() => t.engine.play());
+    t.fake.boundary(120);
+    await t.run(() => t.engine.pause());
+    await t.run(() => t.engine.play());
+    expect(t.fake.texts().at(-1)).toBe(CHAPTERS[1][0].slice(120));
+    expect(t.state.status).toBe('playing');
+  });
+
+  it('restarts the chunk on resume when the voice sent no boundaries', async () => {
+    const t = await setup();
+    await t.run(() => t.engine.play());
+    await t.run(() => t.engine.pause());
+    await t.run(() => t.engine.play());
+    expect(t.fake.texts().at(-1)).toBe(CHAPTERS[1][0]);
+  });
+
+  it('saves the character offset and reopening resumes there', async () => {
+    const t = await setup();
+    await t.run(() => t.engine.play());
+    t.fake.boundary(150);
+    await t.run(() => t.engine.pause());
+    expect(loadEpubProgress('book-1')).toMatchObject({ chapterIndex: 1, chunkIndex: 0, charIndex: 150 });
+    t.engine.destroy();
+
+    const again = await setup();
+    expect(again.state.chapterElapsed).toBeCloseTo(150 / 13.75, 1);
+    await again.run(() => again.engine.play());
+    expect(again.fake.texts()[0]).toBe(CHAPTERS[1][0].slice(150));
+  });
+
+  it('reads an old save without charIndex as the chunk start', async () => {
+    localStorage.setItem('epub-progress:book-1', JSON.stringify({ chapterIndex: 1, chunkIndex: 2, charOffset: 0 }));
+    const t = await setup();
+    expect(t.state.readAlong.chunkIndex).toBe(2);
+    await t.run(() => t.engine.play());
+    expect(t.fake.texts()[0]).toBe(CHAPTERS[1][2]);
+  });
+});
+
+describe('chapter elapsed time', () => {
+  it('follows word boundaries across chunks, and elapsed + remaining = duration', async () => {
+    const t = await setup();
+    await t.run(() => t.engine.play());
+    t.fake.boundary(138); // half of chunk 0 = 10 s
+    expect(t.state.chapterElapsed).toBeCloseTo(138 / 13.75, 2);
+    t.fake.finish(); // chunk 1 starts
+    expect(t.state.chapterElapsed).toBeCloseTo(20, 1);
+    expect(t.state.chapterDuration).toBeCloseTo(100, 1);
+  });
+
+  it('ticks every second between boundaries, scaled by speed', async () => {
+    vi.useFakeTimers();
+    try {
+      const t = await setup({ book: { playbackRate: 1.5 } });
+      await t.run(() => t.engine.play());
+      expect(t.state.chapterElapsed).toBe(0);
+      await vi.advanceTimersByTimeAsync(1000);
+      const one = t.state.chapterElapsed;
+      expect(one).toBeCloseTo(1, 1); // chars * 1.5 speed, duration shrinks by the same factor
+      await vi.advanceTimersByTimeAsync(2000);
+      expect(t.state.chapterElapsed).toBeCloseTo(3, 1);
+      t.fake.boundary(137); // 137 chars at 1.5x = ~6.6 s
+      expect(t.state.chapterElapsed).toBeCloseTo(137 / 13.75 / 1.5, 1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('ticks when the voice sends no boundaries but never passes the chunk end', async () => {
+    vi.useFakeTimers();
+    try {
+      const t = await setup();
+      await t.run(() => t.engine.play());
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(t.state.chapterElapsed).toBeCloseTo(5, 1);
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(t.state.chapterElapsed).toBeCloseTo(20, 1); // chunk 0 is 20 s long
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('stops ticking on pause and resumes ticking on play', async () => {
+    vi.useFakeTimers();
+    try {
+      const t = await setup();
+      await t.run(() => t.engine.play());
+      await vi.advanceTimersByTimeAsync(3000);
+      await t.run(() => t.engine.pause());
+      const frozen = t.state.chapterElapsed;
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(t.state.chapterElapsed).toBe(frozen);
+      await t.run(() => t.engine.play());
+      await vi.advanceTimersByTimeAsync(2000);
+      expect(t.state.chapterElapsed).toBeGreaterThan(frozen);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('stops ticking after destroy', async () => {
+    vi.useFakeTimers();
+    try {
+      const t = await setup();
+      await t.run(() => t.engine.play());
+      t.engine.destroy();
+      const n = t.states.length;
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(t.states).toHaveLength(n);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('uses the audio position for AI voices', async () => {
+    vi.useFakeTimers();
+    try {
+      const router = new TTSRouter();
+      const t = await setup({ deps: { router } });
+      await t.run(() => t.engine.play());
+      router.aiProvider = { id: 'fake' }; // pretend an AI voice is active
+      router.audio = { duration: 10, currentTime: 5 };
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(t.state.chapterElapsed).toBeCloseTo(10, 1); // half of a 20 s chunk
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

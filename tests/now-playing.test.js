@@ -3,12 +3,12 @@ import { renderNowPlaying } from '../js/views/now-playing.js';
 import { makeStore } from './helpers-store.js';
 
 vi.mock('../js/storage/library-db.js', () => ({
-  getCoverObjectUrl: () => 'blob:cover',
+  getCoverBlob: () => Promise.resolve(new Blob(['x'])),
   updateBook: vi.fn(() => Promise.resolve()),
 }));
 
-const audioBook = { id: 'a', type: 'mp3', title: 'Dune', author: 'Herbert', coverBlob: new Blob(['x']) };
-const epubBook = { id: 'e', type: 'epub', title: 'Emma', author: 'Austen', coverBlob: new Blob(['x']) };
+const audioBook = { id: 'a', type: 'mp3', title: 'Dune', author: 'Herbert', hasCover: true };
+const epubBook = { id: 'e', type: 'epub', title: 'Emma', author: 'Austen', hasCover: true };
 const chapters = [{ title: 'One', duration: 100 }, { title: 'Two', duration: 200 }, { title: 'Three', duration: 300 }];
 
 function mount(book = audioBook) {
@@ -23,11 +23,21 @@ function mount(book = audioBook) {
 }
 
 beforeEach(() => {
+  URL.createObjectURL = vi.fn(() => 'blob:cover');
   document.body.innerHTML = '';
   localStorage.clear();
 });
 
 describe('renderNowPlaying', () => {
+  it('gives the title its full text as a title attribute and flags long titles', () => {
+    const long = 'Age of Bronze: A LitRPG Dungeon Core Adventure (Rise of Mankind Book 2)';
+    const { q } = mount({ ...audioBook, title: long });
+    expect(q('.np-title').getAttribute('title')).toBe(long);
+    expect(q('.np-title').classList.contains('np-title--long')).toBe(true);
+    const short = mount();
+    expect(short.q('.np-title').classList.contains('np-title--long')).toBe(false);
+  });
+
   it('opens the book in the store and shows chapter, times and book progress', () => {
     const { store, q } = mount();
     expect(store.getState().book.id).toBe('a');

@@ -1,7 +1,24 @@
 import { openDB } from 'idb';
 
 const DB_NAME = 'audiobook-library';
+const DB_VERSION = 2;
 const BOOKS_STORE = 'books';
+// The audio/EPUB/cover Blobs live in their own store, keyed by string (see
+// the key helpers below). Safari invalidates a Blob read from IndexedDB when
+// the record that holds it is rewritten, and book records are rewritten on
+// every progress save, shelf change, etc. A file written once at import and
+// never touched again stays readable.
+const FILES_STORE = 'files';
+
+/** @param {string} bookId */
+export const bookFileKey = (bookId) => `${bookId}:file`;
+/** @param {string} bookId */
+export const coverKey = (bookId) => `${bookId}:cover`;
+/**
+ * @param {string} bookId
+ * @param {number} index
+ */
+export const trackFileKey = (bookId, index) => `${bookId}:track:${index}`;
 
 /**
  * @typedef {Object} BookProgress
@@ -28,7 +45,8 @@ const BOOKS_STORE = 'books';
  * has exactly one; a chapter-per-file audiobook combined via the "combine
  * into one audiobook" import action has one per chapter, in play order.
  * @typedef {Object} AudioTrack
- * @property {Blob} fileBlob
+ * @property {string} fileKey key of this track's audio Blob in the `files`
+ *   store — read it with `getTrackFile`
  * @property {string} sourceFileName the dedup key, checked per-track
  * @property {number} sourceFileSize
  * @property {string} [label] shown in the chapter/track picker — falls back
@@ -69,10 +87,9 @@ const BOOKS_STORE = 'books';
  * @property {AudioTrack[]} [tracks] mp3 only — always populated by the time
  *   a caller sees it (see `normalizeBook`), even for books stored before
  *   this field existed
- * @property {Blob} [fileBlob] epub only going forward; retained on old mp3
- *   records purely as the source `normalizeBook` migrates from — never read
- *   directly for an mp3 book, use `tracks` instead
- * @property {Blob|null} [coverBlob]
+ * @property {boolean} [hasCover] a cover Blob is in the `files` store
+ *   (`getCoverBlob`); the EPUB file itself is read with `getBookFile`.
+ *   Records never carry Blobs — `addBook` moves them to `files`.
  * @property {string} [sourceFileName] epub only going forward (mp3 moved
  *   this into each track); kept optional for old records
  * @property {number} [sourceFileSize]
@@ -89,7 +106,7 @@ const BOOKS_STORE = 'books';
 /**
  * Upgrade a book read from IndexedDB to the current shape, in memory only
  * — never rewrites the stored record. Two things need upgrading for books
- * saved before this feature existed: an mp3 book's single `fileBlob` becomes
+ * saved before this feature existed: an mp3 book with no `tracks` becomes
  * a one-entry `tracks` array, and `bookmarks`/`series` default in. This is
  * the same "migrate on read, never touch old data until it's next saved"
  * pattern `js/tts/tts-router.js`'s `migrateSettings` uses.
@@ -107,7 +124,7 @@ export function normalizeBook(book) {
   if (book.type === 'mp3' && !book.tracks?.length) {
     normalized.tracks = [
       {
-        fileBlob: book.fileBlob,
+        fileKey: trackFileKey(book.id, 0),
         sourceFileName: book.sourceFileName,
         sourceFileSize: book.sourceFileSize,
         label: book.title,
@@ -123,18 +140,102 @@ export function normalizeBook(book) {
 }
 
 /**
+ * Move every Blob out of a book record into the `files` store and strip it
+ * from the record. Runs inside the version-change transaction, so it is all
+ * or nothing. Idempotent: a record with no Blobs is left alone, and files are
+ * written under fixed keys, so a re-run just rewrites the same entries.
+ * @param {import('idb').IDBPTransaction<unknown, string[], 'versionchange'>} tx
+ */
+async function moveBlobsToFilesStore(tx) {
+  const books = tx.objectStore(BOOKS_STORE);
+  const files = tx.objectStore(FILES_STORE);
+  let cursor = await books.openCursor();
+  while (cursor) {
+    const { fileBlob, coverBlob, ...record } = cursor.value;
+    let changed = fileBlob !== undefined || coverBlob !== undefined;
+    const id = record.id;
+
+    if (coverBlob) {
+      await files.put(coverBlob, coverKey(id));
+      record.hasCover = true;
+    } else if (coverBlob !== undefined) {
+      record.hasCover = false;
+    }
+
+    let fileUsedAsTrack = false;
+    if (record.type === 'mp3' && !record.tracks?.length && fileBlob) {
+      // Pre-`tracks` mp3 record: its single file becomes track 0.
+      record.tracks = [
+        {
+          sourceFileName: record.sourceFileName,
+          sourceFileSize: record.sourceFileSize,
+          label: record.title,
+        },
+      ];
+      await files.put(fileBlob, trackFileKey(id, 0));
+      record.tracks[0].fileKey = trackFileKey(id, 0);
+      fileUsedAsTrack = true;
+    }
+    if (fileBlob && !fileUsedAsTrack) {
+      await files.put(fileBlob, bookFileKey(id));
+    }
+
+    if (record.tracks?.some((t) => t.fileBlob !== undefined)) {
+      changed = true;
+      record.tracks = [];
+      for (const [i, track] of cursor.value.tracks.entries()) {
+        const { fileBlob: trackBlob, ...rest } = track;
+        if (trackBlob) {
+          await files.put(trackBlob, trackFileKey(id, i));
+          rest.fileKey = trackFileKey(id, i);
+        }
+        record.tracks.push(rest);
+      }
+    }
+
+    if (changed) await cursor.update(record);
+    cursor = await cursor.continue();
+  }
+}
+
+/**
  * @returns {Promise<import('idb').IDBPDatabase>}
  */
+/** @type {Promise<import('idb').IDBPDatabase>|null} one shared connection */
+let dbPromise = null;
+/** The IndexedDB factory `dbPromise` was opened on (tests swap in a fresh one). */
+let dbFactory = null;
+
 async function getDb() {
-  return openDB(DB_NAME, 1, {
-    upgrade(db) {
+  if (dbFactory !== globalThis.indexedDB) {
+    dbFactory = globalThis.indexedDB;
+    dbPromise = null;
+  }
+  dbPromise ??= openDB(DB_NAME, DB_VERSION, {
+    async upgrade(db, oldVersion, _newVersion, tx) {
       if (!db.objectStoreNames.contains(BOOKS_STORE)) {
         const store = db.createObjectStore(BOOKS_STORE, { keyPath: 'id' });
         store.createIndex('lastOpenedAt', 'lastOpenedAt');
         store.createIndex('type', 'type');
       }
+      if (!db.objectStoreNames.contains(FILES_STORE)) {
+        db.createObjectStore(FILES_STORE);
+      }
+      if (oldVersion >= 1 && oldVersion < 2) {
+        await moveBlobsToFilesStore(tx);
+      }
+    },
+    // A newer version of the app (e.g. after a service-worker update) needs to
+    // upgrade the database: let go of this connection so the upgrade isn't blocked.
+    blocking() {
+      dbPromise?.then((db) => db.close());
+      dbPromise = null;
+    },
+    terminated() {
+      dbPromise = null;
     },
   });
+  return dbPromise;
 }
 
 /**
@@ -157,23 +258,53 @@ export async function getBook(id) {
 }
 
 /**
- * @param {Omit<Book, 'id'|'addedAt'|'lastOpenedAt'|'progress'> & { progress?: BookProgress }} data
+ * Add a book. The caller passes the Blobs on the data (`fileBlob` for an
+ * EPUB, `coverBlob`, and `fileBlob` on each track); they are written to the
+ * `files` store in the same transaction and the stored record keeps only
+ * references to them.
+ * @param {Omit<Book, 'id'|'addedAt'|'lastOpenedAt'|'progress'|'hasCover'> & {
+ *   progress?: BookProgress,
+ *   fileBlob?: Blob,
+ *   coverBlob?: Blob|null,
+ *   tracks?: Array<Omit<AudioTrack, 'fileKey'> & { fileBlob: Blob }>,
+ * }} data
  * @returns {Promise<Book>}
  */
 export async function addBook(data) {
   const db = await getDb();
+  const { fileBlob, coverBlob, tracks, ...rest } = data;
+  const id = crypto.randomUUID();
   const book = {
-    ...data,
-    id: crypto.randomUUID(),
+    ...rest,
+    id,
+    hasCover: Boolean(coverBlob),
     addedAt: Date.now(),
     lastOpenedAt: Date.now(),
     progress: data.progress ?? {},
   };
-  await db.put(BOOKS_STORE, book);
+  const trackBlobs = [];
+  if (tracks) {
+    book.tracks = tracks.map(({ fileBlob: trackBlob, ...track }, i) => {
+      trackBlobs.push(trackBlob);
+      return { ...track, fileKey: trackFileKey(id, i) };
+    });
+  }
+
+  const tx = db.transaction([BOOKS_STORE, FILES_STORE], 'readwrite');
+  const files = tx.objectStore(FILES_STORE);
+  if (fileBlob) files.put(fileBlob, bookFileKey(id));
+  if (coverBlob) files.put(coverBlob, coverKey(id));
+  trackBlobs.forEach((blob, i) => {
+    if (blob) files.put(blob, trackFileKey(id, i));
+  });
+  tx.objectStore(BOOKS_STORE).put(book);
+  await tx.done;
   return book;
 }
 
 /**
+ * Update a book's metadata. Only the `books` store is written — the files
+ * are never touched, so Blobs read earlier stay valid.
  * @param {string} id
  * @param {Partial<Book>} updates
  */
@@ -188,18 +319,26 @@ export async function updateBook(id, updates) {
     await tx.done;
     return;
   }
-  const updated = { ...normalizeBook(existing), ...updates, id };
+  // Blobs never belong on the record (see FILES_STORE), even if a caller passes one.
+  const metadata = { ...updates };
+  delete metadata.fileBlob;
+  delete metadata.coverBlob;
+  const updated = { ...normalizeBook(existing), ...metadata, id };
   await tx.store.put(updated);
   await tx.done;
   return updated;
 }
 
 /**
+ * Remove a book and all of its files.
  * @param {string} id
  */
 export async function deleteBook(id) {
   const db = await getDb();
-  await db.delete(BOOKS_STORE, id);
+  const tx = db.transaction([BOOKS_STORE, FILES_STORE], 'readwrite');
+  tx.objectStore(BOOKS_STORE).delete(id);
+  tx.objectStore(FILES_STORE).delete(IDBKeyRange.bound(`${id}:`, `${id}:\uffff`));
+  await tx.done;
 }
 
 /**
@@ -211,10 +350,40 @@ export async function getMostRecentBook() {
 }
 
 /**
- * @param {Book} book
- * @returns {string|null}
+ * Read a stored file fresh. Always call this right before using the Blob and
+ * don't hold the result across other work: a new read is the only thing
+ * Safari guarantees valid.
+ * @param {string} key
+ * @returns {Promise<Blob|undefined>}
  */
-export function getCoverObjectUrl(book) {
-  if (!book.coverBlob) return null;
-  return URL.createObjectURL(book.coverBlob);
+async function getFile(key) {
+  const db = await getDb();
+  return db.get(FILES_STORE, key);
+}
+
+/**
+ * The EPUB file of an epub book.
+ * @param {string} bookId
+ * @returns {Promise<Blob|undefined>}
+ */
+export function getBookFile(bookId) {
+  return getFile(bookFileKey(bookId));
+}
+
+/**
+ * @param {string} bookId
+ * @returns {Promise<Blob|undefined>}
+ */
+export function getCoverBlob(bookId) {
+  return getFile(coverKey(bookId));
+}
+
+/**
+ * One audio file of an mp3-type book.
+ * @param {string} bookId
+ * @param {string} [trackKey] the track's `fileKey`; defaults to `trackFileKey(bookId, 0)`
+ * @returns {Promise<Blob|undefined>}
+ */
+export function getTrackFile(bookId, trackKey = trackFileKey(bookId, 0)) {
+  return getFile(trackKey);
 }
