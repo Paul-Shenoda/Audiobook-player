@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Desktop library, revised</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&amp;family=Atkinson+Hyperlegible:wght@400;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#17141F}
+a{color:#F4B54A}a:hover{color:#FFCB6E}
+button{font-family:inherit;cursor:pointer}
+button:focus-visible,a:focus-visible,input:focus-visible{outline:2px solid #F4B54A;outline-offset:2px}
+input::placeholder{color:#ABA3B8}
+</style>
+</helmet>
+<div style="height: 100vh; min-height: 640px; display: flex; flex-direction: column; background: #0E0C13; color: #F1ECE4; font-family: 'Atkinson Hyperlegible', 'Segoe UI', system-ui, sans-serif; font-size: 16px; box-sizing: border-box; padding: 8px; gap: 8px;">
+  <div style="flex: 1; min-height: 0; display: flex; flex-wrap: wrap; gap: 8px; overflow: auto;">
+
+    <nav aria-label="Library navigation" style="flex: 1 1 240px; max-width: 300px; background: #17141F; border-radius: 16px; padding: 20px 16px; box-sizing: border-box; display: flex; flex-direction: column; gap: 24px;">
+      <div style="display: flex; align-items: center; gap: 10px; padding: 0 8px;">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#F4B54A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19V5M8 19V7M12 19V4M16.5 19l-3-13M20 19V9"></path></svg>
+        <span style="font-family: 'Bricolage Grotesque', sans-serif; font-weight: 800; font-size: 20px; letter-spacing: -0.02em;">Night Shelf</span>
+      </div>
+      <ul style="list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px;">
+        <li><a href="#" aria-current="page" style="display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 0 12px; border-radius: 10px; background: #2E2939; color: #F1ECE4; text-decoration: none; font-weight: 700;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19V5M9 19V5M14 19l-1-14M19 19l-3-13"></path></svg>Library</a></li>
+        <li><a href="#" style="display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 0 12px; border-radius: 10px; color: #D5CEDF; text-decoration: none;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 21l-6-4.5L6 21V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2z"></path></svg>Bookmarks</a></li>
+        <li><a href="#" style="display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 0 12px; border-radius: 10px; color: #D5CEDF; text-decoration: none;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a4 4 0 0 0-4 4v4a4 4 0 0 0 8 0V7a4 4 0 0 0-4-4zM5 11a7 7 0 0 0 14 0M12 18v3"></path></svg>Narrators</a></li>
+        <li><a href="#" style="display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 0 12px; border-radius: 10px; color: #D5CEDF; text-decoration: none;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"></path><circle cx="16" cy="7" r="2"></circle><circle cx="10" cy="17" r="2"></circle></svg>Settings</a></li>
+      </ul>
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        <div style="display: flex; align-items: center; justify-content: space-between; padding: 0 8px 0 12px;">
+          <h2 style="margin: 0; font-size: 15px; color: #ABA3B8; font-weight: 700;">Shelves</h2>
+          <button type="button" aria-label="New shelf" style="width: 36px; height: 36px; border-radius: 50%; border: none; background: none; color: #D5CEDF; display: flex; align-items: center; justify-content: center; padding: 0;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg></button>
+        </div>
+        <ul style="list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px;">
+          <sc-for list="{{shelves}}" as="s" hint-placeholder-count="3">
+            <li><a href="#" style="display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 0 12px; border-radius: 10px; color: #F1ECE4; text-decoration: none;">
+              <span style="display: flex; align-items: flex-end; gap: 2px; height: 28px;"><span style="width: 7px; height: 28px; border-radius: 2px; background: {{s.c1}};"></span><span style="width: 6px; height: 23px; border-radius: 2px; background: {{s.c2}};"></span><span style="width: 8px; height: 26px; border-radius: 2px; background: {{s.c3}};"></span></span>
+              <span style="display: flex; flex-direction: column;"><span style="font-weight: 700; font-size: 15px;">{{s.name}}</span><span style="font-size: 13px; color: #ABA3B8;">{{s.count}}</span></span>
+            </a></li>
+          </sc-for>
+        </ul>
+      </div>
+      <button type="button" style="margin-top: auto; height: 48px; border-radius: 999px; border: none; background: #F4B54A; color: #2A1B05; font-weight: 700; font-size: 15px; display: flex; align-items: center; justify-content: center; gap: 8px;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>Add books</button>
+      <p style="margin: 0; font-size: 13px; line-height: 1.45; color: #ABA3B8; padding: 0 8px;">MP3, M4B, M4A and EPUB. Files stay in this browser.</p>
+    </nav>
+
+    <main style="flex: 999 1 560px; min-width: 0; background: #17141F; border-radius: 16px; padding: 28px 32px 40px; box-sizing: border-box; display: flex; flex-direction: column; gap: 36px;">
+      <header style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px;">
+        <h1 style="margin: 0; font-family: 'Bricolage Grotesque', sans-serif; font-size: 48px; font-weight: 800; letter-spacing: -0.035em; line-height: 1;">Library</h1>
+        <label style="flex: 0 1 360px; display: flex; align-items: center; gap: 10px; height: 48px; padding: 0 16px; border-radius: 999px; background: #2E2939; color: #ABA3B8;">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
+          <span style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0);">Search library</span>
+          <input type="search" placeholder="Search titles, authors, series" style="flex: 1; min-width: 0; background: none; border: none; outline: none; color: #F1ECE4; font-size: 15px; font-family: inherit;">
+        </label>
+      </header>
+
+      <section aria-labelledby="cont-h" style="display: flex; flex-direction: column; gap: 16px;">
+        <h2 id="cont-h" style="margin: 0; font-family: 'Bricolage Grotesque', sans-serif; font-size: 24px; font-weight: 700; letter-spacing: -0.01em;">Pick up where you left off</h2>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)); gap: 16px;">
+          <sc-for list="{{inProgress}}" as="b" hint-placeholder-count="3">
+            <div style="background: #221E2C; border-radius: 18px; padding: 16px; display: flex; gap: 16px; align-items: center;">
+              <span style="width: 96px; height: 96px; flex-shrink: 0; border-radius: 10px; padding: 10px; box-sizing: border-box; display: flex; flex-direction: column; justify-content: space-between; background: {{b.bg}}; color: {{b.ink}}; box-shadow: 0 10px 24px rgba(0,0,0,0.4);">
+                <span style="font-family: 'Bricolage Grotesque', sans-serif; font-weight: 800; font-size: 15px; line-height: 0.95;">{{b.title}}</span>
+                <span style="font-size: 9px; opacity: 0.85;">{{b.author}}</span>
+              </span>
+              <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px;">
+                <p style="margin: 0; font-weight: 700; font-size: 17px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{b.title}}</p>
+                <p style="margin: 0; font-size: 14px; color: #ABA3B8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{b.where}}</p>
+                <div style="height: 4px; border-radius: 999px; background: #3A3446; overflow: hidden; margin-top: 4px;"><div style="height: 100%; background: #F4B54A; width: {{b.pct}};"></div></div>
+                <p style="margin: 0; font-size: 13px; color: #D5CEDF;">{{b.status}}</p>
+              </div>
+              <button type="button" aria-label="Resume {{b.title}}" style="width: 48px; height: 48px; flex-shrink: 0; border-radius: 50%; border: none; background: #F4B54A; color: #2A1B05; display: flex; align-items: center; justify-content: center; padding: 0;"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"></path></svg></button>
+            </div>
+          </sc-for>
+        </div>
+      </section>
+
+      <section aria-labelledby="all-h" style="display: flex; flex-direction: column; gap: 16px;">
+        <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px;">
+          <h2 id="all-h" style="margin: 0; font-family: 'Bricolage Grotesque', sans-serif; font-size: 24px; font-weight: 700;">All books</h2>
+          <div role="tablist" aria-label="Filter books" style="display: flex; flex-wrap: wrap; gap: 8px;">
+            <sc-for list="{{chips}}" as="c" hint-placeholder-count="6">
+              <button type="button" role="tab" aria-selected="{{c.sel}}" onClick="{{c.pick}}" style="{{c.style}}">{{c.label}}</button>
+            </sc-for>
+          </div>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(min(168px, 100%), 1fr)); gap: 28px 20px;">
+          <sc-for list="{{visible}}" as="b" hint-placeholder-count="7">
+            <button type="button" style="border: none; background: none; color: #F1ECE4; text-align: left; padding: 0; display: flex; flex-direction: column; gap: 10px;">
+              <span style="position: relative; aspect-ratio: 1; width: 100%; border-radius: 12px; padding: 16px; box-sizing: border-box; display: flex; flex-direction: column; justify-content: space-between; background: {{b.bg}}; color: {{b.ink}}; box-shadow: 0 12px 28px rgba(0,0,0,0.4);">
+                <span style="font-family: 'Bricolage Grotesque', sans-serif; font-weight: 800; font-size: 24px; line-height: 0.95; letter-spacing: -0.02em;">{{b.title}}</span>
+                <span style="font-size: 12px; opacity: 0.85;">{{b.author}}</span>
+                <sc-if value="{{b.inProgress}}" hint-placeholder-val="{{ false }}">
+                  <span style="position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: rgba(0,0,0,0.35); border-radius: 0 0 12px 12px; overflow: hidden;"><span style="display: block; height: 100%; background: #F4B54A; width: {{b.pct}};"></span></span>
+                </sc-if>
+              </span>
+              <span style="display: flex; flex-direction: column; gap: 3px;">
+                <span style="font-weight: 700; font-size: 15px;">{{b.title}}</span>
+                <span style="display: flex; align-items: center; gap: 8px; font-size: 13px;">
+                  <span style="border: 1px solid #4A4358; border-radius: 6px; padding: 0 6px; color: #D5CEDF;">{{b.kind}}</span>
+                  <span style="{{b.statusStyle}}">{{b.status}}</span>
+                </span>
+              </span>
+            </button>
+          </sc-for>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <section aria-label="Now playing" style="flex-shrink: 0; background: #17141F; border-radius: 16px; padding: 12px 20px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 24px;">
+    <div style="flex: 1 1 260px; min-width: 0; display: flex; align-items: center; gap: 14px;">
+      <span style="width: 56px; height: 56px; flex-shrink: 0; border-radius: 8px; background: #1F4E5F; padding: 6px; box-sizing: border-box; font-family: 'Bricolage Grotesque', sans-serif; font-weight: 800; font-size: 10px; line-height: 0.95; color: #F1ECE4;">Moby-Dick</span>
+      <span style="min-width: 0; display: flex; flex-direction: column; gap: 2px;">
+        <span style="font-weight: 700; font-size: 15px;">Moby-Dick</span>
+        <span style="font-size: 13px; color: #ABA3B8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Chapter 36, The Quarter-Deck</span>
+      </span>
+      <button type="button" aria-label="Add bookmark here" style="width: 40px; height: 40px; flex-shrink: 0; border-radius: 50%; border: none; background: none; color: #D5CEDF; display: flex; align-items: center; justify-content: center; padding: 0;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 21l-6-4.5L6 21V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2z"></path><path d="M12 7v6M9 10h6"></path></svg></button>
+    </div>
+
+    <div style="flex: 2 1 420px; max-width: 640px; display: flex; flex-direction: column; align-items: center; gap: 6px;">
+      <div style="display: flex; align-items: center; gap: 12px;">
+        <button type="button" aria-label="Previous chapter" style="width: 40px; height: 40px; border: none; background: none; color: #D5CEDF; display: flex; align-items: center; justify-content: center; padding: 0;"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 5h2v14H6zM20 5v14L9.5 12z"></path></svg></button>
+        <button type="button" aria-label="Back 15 seconds" style="width: 44px; height: 44px; border: none; background: none; color: #F1ECE4; display: flex; align-items: center; justify-content: center; padding: 0;"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4v5h5"></path><path d="M4.6 15a8 8 0 1 0 1.9-8.3L4 9"></path><text x="12.6" y="15.6" text-anchor="middle" font-size="7" font-weight="700" stroke="none" fill="currentColor">15</text></svg></button>
+        <button type="button" aria-label="{{playLabel}}" onClick="{{togglePlay}}" style="width: 48px; height: 48px; border-radius: 50%; border: none; background: #F4B54A; color: #2A1B05; display: flex; align-items: center; justify-content: center; padding: 0;">
+          <sc-if value="{{playing}}" hint-placeholder-val="{{ true }}"><svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z"></path></svg></sc-if>
+          <sc-if value="{{paused}}" hint-placeholder-val="{{ false }}"><svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"></path></svg></sc-if>
+        </button>
+        <button type="button" aria-label="Forward 30 seconds" style="width: 44px; height: 44px; border: none; background: none; color: #F1ECE4; display: flex; align-items: center; justify-content: center; padding: 0;"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 4v5h-5"></path><path d="M19.4 15a8 8 0 1 1-1.9-8.3L20 9"></path><text x="11.4" y="15.6" text-anchor="middle" font-size="7" font-weight="700" stroke="none" fill="currentColor">30</text></svg></button>
+        <button type="button" aria-label="Next chapter" style="width: 40px; height: 40px; border: none; background: none; color: #D5CEDF; display: flex; align-items: center; justify-content: center; padding: 0;"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M16 5h2v14h-2zM4 5v14l10.5-7z"></path></svg></button>
+      </div>
+      <div style="width: 100%; display: flex; align-items: center; gap: 10px; font-size: 12px; color: #ABA3B8; font-variant-numeric: tabular-nums;">
+        <span>8:12</span>
+        <div style="flex: 1; position: relative; height: 14px; display: flex; align-items: center;">
+          <div style="width: 100%; height: 4px; border-radius: 999px; background: #3A3446;"><div style="width: 38%; height: 100%; border-radius: 999px; background: #F1ECE4;"></div></div>
+          <span style="position: absolute; left: calc(38% - 6px); width: 12px; height: 12px; border-radius: 50%; background: #F1ECE4;"></span>
+        </div>
+        <span>−13:28</span>
+      </div>
+    </div>
+
+    <div style="flex: 1 1 260px; display: flex; align-items: center; justify-content: flex-end; gap: 6px;">
+      <button type="button" onClick="{{cycleSpeed}}" aria-label="Playback speed {{speed}}, change" style="height: 40px; min-width: 56px; padding: 0 10px; border-radius: 999px; border: 1px solid #4A4358; background: none; color: #F1ECE4; font-weight: 700; font-size: 14px; font-variant-numeric: tabular-nums;">{{speed}}</button>
+      <button type="button" aria-label="Sleep timer: end of chapter" style="height: 40px; padding: 0 12px; border-radius: 999px; border: 1px solid #F4B54A; background: rgba(244,181,74,0.14); color: #F4B54A; display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 13.5A8 8 0 1 1 10.5 4a6.2 6.2 0 0 0 9.5 9.5z"></path></svg>End of chapter</button>
+      <button type="button" aria-label="Chapters" style="width: 40px; height: 40px; border-radius: 50%; border: none; background: none; color: #D5CEDF; display: flex; align-items: center; justify-content: center; padding: 0;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01"></path></svg></button>
+      <button type="button" aria-label="Read along" style="width: 40px; height: 40px; border-radius: 50%; border: none; background: none; color: #D5CEDF; display: flex; align-items: center; justify-content: center; padding: 0;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5h6a3 3 0 0 1 3 3v12a2.5 2.5 0 0 0-2.5-2.5H3zM21 5h-6a3 3 0 0 0-3 3v12a2.5 2.5 0 0 1 2.5-2.5H21z"></path></svg></button>
+      <label style="display: flex; align-items: center; gap: 8px; color: #D5CEDF;">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="Volume"><path d="M4 9v6h4l5 4V5L8 9z"></path><path d="M16.5 8.5a5 5 0 0 1 0 7"></path></svg>
+        <input type="range" min="0" max="100" value="70" style="width: 96px; accent-color: #F1ECE4;">
+      </label>
+    </div>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1000}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { filter: 'all', playing: true, speed: 0 };
+  }
+  renderVals() {
+    const books = [
+      { title: 'Moby-Dick', author: 'Herman Melville', bg: '#1F4E5F', ink: '#F1ECE4', kind: 'EPUB', st: 'progress', status: 'About 14 h left', pct: '42%', where: 'Chapter 36, The Quarter-Deck' },
+      { title: 'Pride and Prejudice', author: 'Jane Austen', bg: '#E8C9B5', ink: '#3A1F1A', kind: 'Audio', st: 'progress', status: '3 h 20 min left', pct: '71%', where: 'Chapter 43' },
+      { title: 'Frankenstein', author: 'Mary Shelley', bg: '#3B4A2F', ink: '#E9E4D0', kind: 'Audio', st: 'progress', status: '7 h 48 min left', pct: '12%', where: 'Letter 4' },
+      { title: 'Dracula', author: 'Bram Stoker', bg: '#6E1E2A', ink: '#F3E3DA', kind: 'EPUB', st: 'new', status: 'About 15 h' },
+      { title: 'Middlemarch', author: 'George Eliot', bg: '#8A5A3C', ink: '#F6EBDD', kind: 'Audio', st: 'new', status: '35 h 41 min' },
+      { title: 'The Count of Monte Cristo', author: 'Alexandre Dumas', bg: '#2C2F6B', ink: '#E6E2F5', kind: 'EPUB', st: 'new', status: 'About 46 h' },
+      { title: 'The Time Machine', author: 'H. G. Wells', bg: '#C9B458', ink: '#1E1A10', kind: 'Audio', st: 'done', status: 'Finished' },
+    ];
+    const f = this.state.filter;
+    const match = (b) => f === 'all' || (f === 'progress' && b.st === 'progress') || (f === 'new' && b.st === 'new') || (f === 'done' && b.st === 'done') || (f === 'audio' && b.kind === 'Audio') || (f === 'epub' && b.kind === 'EPUB');
+    const visible = books.filter(match).map((b) => ({ ...b, inProgress: b.st === 'progress', statusStyle: b.st === 'done' ? 'color: #9FD9B4;' : 'color: #ABA3B8;' }));
+    const chipDefs = [['all', 'All'], ['progress', 'In progress'], ['new', 'Not started'], ['done', 'Finished'], ['audio', 'Audio'], ['epub', 'EPUB']];
+    const chips = chipDefs.map(([id, label]) => {
+      const sel = id === f;
+      return {
+        label, sel: String(sel),
+        pick: () => this.setState({ filter: id }),
+        style: 'height: 40px; padding: 0 16px; border-radius: 999px; font-size: 14px; font-weight: 700; white-space: nowrap; ' + (sel ? 'background: #F1ECE4; color: #17141F; border: 1px solid #F1ECE4;' : 'background: transparent; color: #D5CEDF; border: 1px solid #4A4358;'),
+      };
+    });
+    const shelves = [
+      { name: 'Bedtime', count: '4 books', c1: '#2C2F6B', c2: '#1F4E5F', c3: '#8A5A3C' },
+      { name: 'Commute', count: '3 books', c1: '#E8C9B5', c2: '#3B4A2F', c3: '#C9B458' },
+      { name: 'Gothic', count: '2 books', c1: '#6E1E2A', c2: '#3B4A2F', c3: '#4A4358' },
+    ];
+    const speeds = ['1.0×', '1.2×', '1.5×', '1.75×', '2.0×', '0.8×'];
+    const s = this.state;
+    return {
+      chips, visible, shelves,
+      inProgress: books.filter((b) => b.st === 'progress'),
+      playing: s.playing, paused: !s.playing, playLabel: s.playing ? 'Pause' : 'Play',
+      togglePlay: () => this.setState({ playing: !s.playing }),
+      speed: speeds[s.speed],
+      cycleSpeed: () => this.setState({ speed: (s.speed + 1) % speeds.length }),
+    };
+  }
+}
+</script>
+</body>
+</html>

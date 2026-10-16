@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Chapters and bookmarks, revised</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&amp;family=Atkinson+Hyperlegible:wght@400;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#F4B54A}a:hover{color:#FFCB6E}
+button{font-family:inherit;cursor:pointer}
+button:focus-visible,a:focus-visible{outline:2px solid #F4B54A;outline-offset:2px}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; position: relative; overflow: hidden; background: #0E0C13; color: #F1ECE4; font-family: 'Atkinson Hyperlegible', 'Segoe UI', system-ui, sans-serif;">
+  <div aria-hidden="true" style="position: absolute; left: 54px; top: 40px; width: 282px; height: 120px; border-radius: 16px; background: #1F4E5F; opacity: 0.35;"></div>
+
+  <section aria-labelledby="sheet-h" style="position: absolute; left: 0; right: 0; top: 88px; bottom: 0; background: #221E2C; border-radius: 24px 24px 0 0; display: flex; flex-direction: column; box-shadow: 0 -12px 40px rgba(0,0,0,0.5);">
+    <div aria-hidden="true" style="width: 40px; height: 5px; border-radius: 999px; background: #4A4358; margin: 10px auto 0;"></div>
+    <div style="display: flex; align-items: center; justify-content: space-between; padding: 8px 12px 0 20px;">
+      <h2 id="sheet-h" style="margin: 0; font-family: 'Bricolage Grotesque', sans-serif; font-size: 24px; font-weight: 800; letter-spacing: -0.02em;">Moby-Dick</h2>
+      <a href="Revised-Player.dc.html" aria-label="Close" style="width: 44px; height: 44px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #F1ECE4;"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12"></path></svg></a>
+    </div>
+
+    <div role="tablist" aria-label="Chapters or bookmarks" style="margin: 12px 20px 8px; padding: 4px; border-radius: 999px; background: #17141F; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px;">
+      <button type="button" role="tab" aria-selected="{{chSel}}" onClick="{{showCh}}" style="{{chStyle}}">Chapters</button>
+      <button type="button" role="tab" aria-selected="{{bmSel}}" onClick="{{showBm}}" style="{{bmStyle}}">Bookmarks (3)</button>
+    </div>
+
+    <sc-if value="{{isCh}}" hint-placeholder-val="{{ true }}">
+      <ol style="list-style: none; margin: 0; padding: 4px 12px 24px; display: flex; flex-direction: column; gap: 2px; overflow: hidden;">
+        <sc-for list="{{chapters}}" as="c" hint-placeholder-count="9">
+          <li>
+            <button type="button" aria-current="{{c.aria}}" style="{{c.rowStyle}}">
+              <span style="width: 32px; flex-shrink: 0; font-size: 14px; font-variant-numeric: tabular-nums; {{c.numStyle}}">{{c.n}}</span>
+              <span style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; text-align: left;">
+                <span style="font-size: 16px; font-weight: 700; {{c.titleStyle}}">{{c.title}}</span>
+                <sc-if value="{{c.current}}" hint-placeholder-val="{{ false }}">
+                  <span style="display: flex; align-items: center; gap: 8px;">
+                    <span style="flex: 1; height: 3px; border-radius: 999px; background: #3A3446; overflow: hidden;"><span style="display: block; width: 38%; height: 100%; background: #F4B54A;"></span></span>
+                    <span style="font-size: 12px; color: #F4B54A; font-variant-numeric: tabular-nums;">8:12 of 21:40</span>
+                  </span>
+                </sc-if>
+              </span>
+              <sc-if value="{{c.done}}" hint-placeholder-val="{{ false }}">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9FD9B4" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="Played"><path d="M20 6L9 17l-5-5"></path></svg>
+              </sc-if>
+              <span style="font-size: 13px; color: #ABA3B8; font-variant-numeric: tabular-nums; min-width: 44px; text-align: right;">{{c.len}}</span>
+            </button>
+          </li>
+        </sc-for>
+      </ol>
+    </sc-if>
+
+    <sc-if value="{{isBm}}" hint-placeholder-val="{{ false }}">
+      <div style="padding: 8px 20px 24px; display: flex; flex-direction: column; gap: 12px;">
+        <button type="button" style="height: 52px; border-radius: 14px; border: 1px dashed #6A6180; background: none; color: #F1ECE4; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 15px; font-weight: 700;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>Bookmark 8:12 in The Quarter-Deck</button>
+        <ul style="list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px;">
+          <sc-for list="{{bookmarks}}" as="b" hint-placeholder-count="3">
+            <li style="background: #2E2939; border-radius: 14px; padding: 14px; display: flex; gap: 12px; align-items: flex-start;">
+              <button type="button" aria-label="Play from {{b.time}}" style="width: 44px; height: 44px; flex-shrink: 0; border-radius: 50%; border: none; background: #F1ECE4; color: #17141F; display: flex; align-items: center; justify-content: center; padding: 0;"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"></path></svg></button>
+              <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px;">
+                <p style="margin: 0; font-size: 13px; color: #ABA3B8;">{{b.where}}</p>
+                <p style="margin: 0; font-size: 16px; line-height: 1.4;">{{b.note}}</p>
+              </div>
+              <button type="button" aria-label="Edit note" style="width: 44px; height: 44px; flex-shrink: 0; border-radius: 50%; border: none; background: none; color: #ABA3B8; display: flex; align-items: center; justify-content: center; padding: 0;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z"></path></svg></button>
+            </li>
+          </sc-for>
+        </ul>
+      </div>
+    </sc-if>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { tab: 'ch' };
+  }
+  renderVals() {
+    const list = [
+      [32, 'Cetology', '38:05'], [33, 'The Specksnyder', '7:44'], [34, 'The Cabin-Table', '14:10'],
+      [35, 'The Mast-Head', '17:52'], [36, 'The Quarter-Deck', '21:40'], [37, 'Sunset', '4:58'],
+      [38, 'Dusk', '3:21'], [39, 'First Night-Watch', '1:47'], [40, 'Midnight, Forecastle', '12:36'],
+      [41, 'Moby Dick', '29:03'],
+    ];
+    const chapters = list.map(([n, title, len]) => {
+      const done = n < 36, current = n === 36;
+      return {
+        n, title, len, done, current, aria: current ? 'true' : 'false',
+        rowStyle: 'width: 100%; min-height: 56px; border: none; border-radius: 12px; padding: 8px 8px; display: flex; align-items: center; gap: 8px; color: #F1ECE4; ' + (current ? 'background: rgba(244,181,74,0.12);' : 'background: none;'),
+        numStyle: current ? 'color: #F4B54A;' : 'color: #ABA3B8;',
+        titleStyle: done ? 'color: #ABA3B8;' : (current ? 'color: #F4B54A;' : 'color: #F1ECE4;'),
+      };
+    });
+    const bookmarks = [
+      { time: '2:41', where: 'Chapter 36, The Quarter-Deck at 2:41', note: 'Ahab nails the doubloon to the mast.' },
+      { time: '11:02', where: 'Chapter 35, The Mast-Head at 11:02', note: 'Ishmael on daydreaming at the masthead.' },
+      { time: '0:00', where: 'Chapter 1, Loomings at 0:00', note: 'Call me Ishmael.' },
+    ];
+    const isCh = this.state.tab === 'ch';
+    const tabOn = 'height: 40px; border: none; border-radius: 999px; background: #F1ECE4; color: #17141F; font-size: 15px; font-weight: 700;';
+    const tabOff = 'height: 40px; border: none; border-radius: 999px; background: transparent; color: #D5CEDF; font-size: 15px; font-weight: 700;';
+    return {
+      chapters, bookmarks, isCh, isBm: !isCh,
+      chSel: String(isCh), bmSel: String(!isCh),
+      chStyle: isCh ? tabOn : tabOff, bmStyle: isCh ? tabOff : tabOn,
+      showCh: () => this.setState({ tab: 'ch' }), showBm: () => this.setState({ tab: 'bm' }),
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Now playing, revised</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&amp;family=Atkinson+Hyperlegible:wght@400;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#F4B54A}a:hover{color:#FFCB6E}
+button{font-family:inherit;cursor:pointer}
+button:focus-visible,a:focus-visible{outline:2px solid #F4B54A;outline-offset:2px}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; position: relative; overflow: hidden; background: #17141F; color: #F1ECE4; font-family: 'Atkinson Hyperlegible', 'Segoe UI', system-ui, sans-serif; display: flex; flex-direction: column; padding: 8px 20px 28px; gap: 18px;">
+  <div aria-hidden="true" style="position: absolute; left: -60px; right: -60px; top: 40px; height: 420px; background: radial-gradient(closest-side, rgba(244,181,74,0.22), rgba(31,78,95,0.18) 55%, rgba(23,20,31,0) 100%); pointer-events: none;"></div>
+
+  <header style="position: relative; display: flex; align-items: center; justify-content: space-between; height: 48px;">
+    <a href="Revised-Library.dc.html" aria-label="Close player" style="width: 44px; height: 44px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #F1ECE4;"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></a>
+    <p style="margin: 0; font-size: 14px; color: #D5CEDF; text-align: center;">Chapter 36 of 135</p>
+    <button type="button" aria-label="More options" style="width: 44px; height: 44px; border-radius: 50%; border: none; background: none; color: #F1ECE4; display: flex; align-items: center; justify-content: center; padding: 0;"><svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.8"></circle><circle cx="12" cy="12" r="1.8"></circle><circle cx="19" cy="12" r="1.8"></circle></svg></button>
+  </header>
+
+  <div style="position: relative; height: 290px; display: flex; align-items: center; justify-content: center;">
+    <sc-if value="{{showCover}}" hint-placeholder-val="{{ true }}">
+      <div style="width: 282px; height: 282px; border-radius: 16px; background: #1F4E5F; color: #F1ECE4; padding: 24px; box-sizing: border-box; display: flex; flex-direction: column; justify-content: space-between; box-shadow: 0 24px 60px rgba(0,0,0,0.55);">
+        <span style="font-family: 'Bricolage Grotesque', sans-serif; font-weight: 800; font-size: 52px; line-height: 0.9; letter-spacing: -0.035em;">Moby-Dick</span>
+        <span style="display: flex; flex-direction: column; gap: 4px;">
+          <span style="font-size: 13px; opacity: 0.8;">or, The Whale</span>
+          <span style="font-size: 16px; font-weight: 700;">Herman Melville</span>
+        </span>
+      </div>
+    </sc-if>
+    <sc-if value="{{readAlong}}" hint-placeholder-val="{{ false }}">
+      <div style="width: 100%; height: 290px; box-sizing: border-box; padding: 20px; border-radius: 16px; background: #221E2C; overflow: hidden; display: flex; flex-direction: column; gap: 10px;">
+        <p style="margin: 0; font-size: 13px; color: #ABA3B8;">Read along, following the narrator</p>
+        <p style="margin: 0; font-family: 'Atkinson Hyperlegible', sans-serif; font-size: 19px; line-height: 1.5; text-wrap: pretty;">
+          <span style="color: #7E7690;">Hark ye yet again, the little lower layer. </span><span style="color: #7E7690;">All visible objects, man, are but as pasteboard masks. </span><span style="color: #F1ECE4; background: rgba(244,181,74,0.18); box-shadow: 0 0 0 3px rgba(244,181,74,0.18); border-radius: 4px;">But in each event, in the living act, the undoubted deed, there, some unknown but still reasoning thing puts forth the mouldings of its features from behind the unreasoning mask. </span><span style="color: #D5CEDF;">If man will strike, strike through the mask!</span>
+        </p>
+      </div>
+    </sc-if>
+  </div>
+
+  <div style="position: relative; display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;">
+    <div style="min-width: 0;">
+      <h1 style="margin: 0; font-family: 'Bricolage Grotesque', sans-serif; font-size: 28px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.05;">Moby-Dick</h1>
+      <p style="margin: 6px 0 0; font-size: 15px; color: #ABA3B8;">Herman Melville, read by on-device voice</p>
+    </div>
+    <button type="button" aria-label="Add bookmark here" style="width: 44px; height: 44px; flex-shrink: 0; border-radius: 50%; border: 1px solid #4A4358; background: none; color: #F1ECE4; display: flex; align-items: center; justify-content: center; padding: 0;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 21l-6-4.5L6 21V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2z"></path><path d="M12 7v6M9 10h6"></path></svg></button>
+  </div>
+
+  <div style="position: relative; display: flex; flex-direction: column; gap: 8px;">
+    <div role="slider" aria-label="Position in chapter" aria-valuemin="0" aria-valuemax="1300" aria-valuenow="492" aria-valuetext="8 minutes 12 seconds of 21 minutes 40 seconds" tabindex="0" style="position: relative; height: 20px; display: flex; align-items: center;">
+      <div style="width: 100%; height: 6px; border-radius: 999px; background: #3A3446;"><div style="width: 38%; height: 100%; border-radius: 999px; background: #F1ECE4;"></div></div>
+      <span style="position: absolute; left: calc(38% - 8px); width: 16px; height: 16px; border-radius: 50%; background: #F1ECE4; box-shadow: 0 2px 6px rgba(0,0,0,0.5);"></span>
+    </div>
+    <div style="display: flex; justify-content: space-between; font-size: 13px; color: #ABA3B8; font-variant-numeric: tabular-nums;"><span>8:12</span><span>−13:28</span></div>
+    <div style="display: flex; align-items: center; gap: 10px; margin-top: 2px;">
+      <div aria-hidden="true" style="flex: 1; height: 8px; border-radius: 2px; background: repeating-linear-gradient(90deg, #4A4358 0 2px, transparent 2px 5px); position: relative;">
+        <div style="position: absolute; left: 0; top: 0; bottom: 0; width: 42%; background: repeating-linear-gradient(90deg, #F4B54A 0 2px, transparent 2px 5px);"></div>
+      </div>
+      <span style="font-size: 13px; color: #D5CEDF; white-space: nowrap;">42% of book, about 14 h left</span>
+    </div>
+  </div>
+
+  <div style="position: relative; display: flex; align-items: center; justify-content: space-between;">
+    <button type="button" aria-label="Previous chapter" style="width: 48px; height: 48px; border: none; background: none; color: #D5CEDF; display: flex; align-items: center; justify-content: center; padding: 0;"><svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 5h2v14H6zM20 5v14L9.5 12z"></path></svg></button>
+    <button type="button" aria-label="Back 15 seconds" style="width: 56px; height: 56px; border: none; background: none; color: #F1ECE4; display: flex; align-items: center; justify-content: center; padding: 0;"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4v5h5"></path><path d="M4.6 15a8 8 0 1 0 1.9-8.3L4 9"></path><text x="12.6" y="15.6" text-anchor="middle" font-size="7" font-weight="700" stroke="none" fill="currentColor">15</text></svg></button>
+    <button type="button" aria-label="{{playLabel}}" onClick="{{togglePlay}}" style="width: 80px; height: 80px; border-radius: 50%; border: none; background: #F4B54A; color: #2A1B05; display: flex; align-items: center; justify-content: center; padding: 0; box-shadow: 0 10px 30px rgba(244,181,74,0.3);">
+      <sc-if value="{{playing}}" hint-placeholder-val="{{ true }}"><svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z"></path></svg></sc-if>
+      <sc-if value="{{paused}}" hint-placeholder-val="{{ false }}"><svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"></path></svg></sc-if>
+    </button>
+    <button type="button" aria-label="Forward 30 seconds" style="width: 56px; height: 56px; border: none; background: none; color: #F1ECE4; display: flex; align-items: center; justify-content: center; padding: 0;"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 4v5h-5"></path><path d="M19.4 15a8 8 0 1 1-1.9-8.3L20 9"></path><text x="11.4" y="15.6" text-anchor="middle" font-size="7" font-weight="700" stroke="none" fill="currentColor">30</text></svg></button>
+    <button type="button" aria-label="Next chapter" style="width: 48px; height: 48px; border: none; background: none; color: #D5CEDF; display: flex; align-items: center; justify-content: center; padding: 0;"><svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M16 5h2v14h-2zM4 5v14l10.5-7z"></path></svg></button>
+  </div>
+
+  <div style="position: relative; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-top: auto;">
+    <button type="button" onClick="{{cycleSpeed}}" aria-label="Playback speed {{speed}}, change" style="min-height: 64px; border: none; border-radius: 14px; background: #221E2C; color: #F1ECE4; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding: 0;">
+      <span style="font-family: 'Bricolage Grotesque', sans-serif; font-weight: 700; font-size: 17px; font-variant-numeric: tabular-nums;">{{speed}}</span>
+      <span style="font-size: 12px; color: #ABA3B8;">Speed</span>
+    </button>
+    <button type="button" onClick="{{cycleSleep}}" aria-label="Sleep timer {{sleep}}, change" style="{{sleepStyle}}">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 13.5A8 8 0 1 1 10.5 4a6.2 6.2 0 0 0 9.5 9.5z"></path></svg>
+      <span style="font-size: 12px;">{{sleep}}</span>
+    </button>
+    <a href="Revised-Chapters.dc.html" style="min-height: 64px; border-radius: 14px; background: #221E2C; color: #F1ECE4; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; text-decoration: none;">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01"></path></svg>
+      <span style="font-size: 12px; color: #ABA3B8;">Chapters</span>
+    </a>
+    <button type="button" onClick="{{toggleRead}}" aria-pressed="{{readPressed}}" style="{{readStyle}}">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5h6a3 3 0 0 1 3 3v12a2.5 2.5 0 0 0-2.5-2.5H3zM21 5h-6a3 3 0 0 0-3 3v12a2.5 2.5 0 0 1 2.5-2.5H21z"></path></svg>
+      <span style="font-size: 12px;">Read along</span>
+    </button>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { playing: true, speed: 0, sleep: 0, read: false };
+  }
+  renderVals() {
+    const speeds = ['1.0×', '1.2×', '1.5×', '1.75×', '2.0×', '0.8×'];
+    const sleeps = ['Sleep off', '15 min', '30 min', 'End of chapter'];
+    const base = 'min-height: 64px; border-radius: 14px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding: 0 4px; ';
+    const on = base + 'border: 1px solid #F4B54A; background: rgba(244,181,74,0.14); color: #F4B54A;';
+    const off = base + 'border: 1px solid transparent; background: #221E2C; color: #F1ECE4;';
+    const s = this.state;
+    return {
+      playing: s.playing, paused: !s.playing,
+      playLabel: s.playing ? 'Pause' : 'Play',
+      togglePlay: () => this.setState({ playing: !s.playing }),
+      speed: speeds[s.speed],
+      cycleSpeed: () => this.setState({ speed: (s.speed + 1) % speeds.length }),
+      sleep: sleeps[s.sleep],
+      sleepStyle: s.sleep ? on : off,
+      cycleSleep: () => this.setState({ sleep: (s.sleep + 1) % sleeps.length }),
+      readAlong: s.read, showCover: !s.read, readPressed: String(s.read),
+      readStyle: s.read ? on : off,
+      toggleRead: () => this.setState({ read: !s.read }),
+    };
+  }
+}
+</script>
+</body>
+</html>
