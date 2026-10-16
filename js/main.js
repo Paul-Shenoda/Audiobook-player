@@ -41,13 +41,18 @@ async function showLibrary() {
  * @param {import('./storage/library-db.js').Book} book
  */
 async function openBook(book) {
-  // Re-read from the database: the mini player holds the object from when the
-  // book was first opened, so its speed and position would be stale.
-  const fresh = (await getBook(book.id).catch(() => null)) ?? book;
-  if (fresh.type === 'mp3') {
-    showMp3Player(fresh);
+  // Already on screen (e.g. tapping the mini player for the open book): keep it.
+  // Rebuilding the EPUB reader here hit Safari's stale IndexedDB Blob error.
+  if (lifecycle.isShowing(book.id)) return;
+  // The mini player holds the object from when the book was first opened, so
+  // refresh its speed and position from the database. Keep the original file
+  // Blob(s): a Blob read now can be stale by the time Safari reads it.
+  const saved = await getBook(book.id).catch(() => null);
+  const current = saved ? { ...book, progress: saved.progress, playbackRate: saved.playbackRate } : book;
+  if (current.type === 'mp3') {
+    showMp3Player(current);
   } else {
-    showEpubListen(fresh);
+    showEpubListen(current);
   }
 }
 
@@ -61,7 +66,7 @@ function showMp3Player(book) {
     onBack: showLibrary,
     keepPlaybackOnBack: true,
   });
-  lifecycle.show(view.cleanup);
+  lifecycle.show(view.cleanup, book.id);
   renderMiniPlayer(miniPlayerEl, { onOpenBook: openBook });
 }
 
@@ -76,7 +81,7 @@ async function showEpubListen(book) {
     onOpenSettings: showSettings,
     keepPlaybackOnBack: true,
   });
-  lifecycle.show(view.cleanup);
+  lifecycle.show(view.cleanup, book.id);
   renderMiniPlayer(miniPlayerEl, { onOpenBook: openBook });
 }
 

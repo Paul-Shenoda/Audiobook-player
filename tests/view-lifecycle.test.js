@@ -50,4 +50,17 @@ describe('createViewLifecycle', () => {
 
     expect(player.mock.calls).toEqual([[{ keepPlayback: true }]]);
   });
+
+  it('knows which book is on screen, and forgets it when leaving', () => {
+    // Tapping the mini player for the book already on screen must not rebuild
+    // it (rebuilding the EPUB reader hit Safari's stale-Blob error).
+    const life = createViewLifecycle({ clearPlayback: vi.fn() });
+
+    life.show(vi.fn(), 'book-1');
+    expect(life.isShowing('book-1')).toBe(true);
+    expect(life.isShowing('book-2')).toBe(false);
+
+    life.leave({ keepPlayback: true }); // back to the library
+    expect(life.isShowing('book-1')).toBe(false);
+  });
 });

@@ -14,15 +14,27 @@ export function createViewLifecycle({ clearPlayback }) {
   let onScreen = null;
   /** @type {((o: { keepPlayback: boolean }) => void) | null} */
   let backgrounded = null;
+  /** @type {string | null} id of the book whose view is on screen */
+  let onScreenKey = null;
 
   return {
-    /** @param {(o: { keepPlayback: boolean }) => void} cleanup */
-    show(cleanup) {
+    /**
+     * @param {(o: { keepPlayback: boolean }) => void} cleanup
+     * @param {string | null} [key] the book shown, if any
+     */
+    show(cleanup, key = null) {
       onScreen = cleanup;
+      onScreenKey = key;
+    },
+
+    /** @param {string} key */
+    isShowing(key) {
+      return onScreen !== null && onScreenKey === key;
     },
 
     /** @param {{ keepPlayback?: boolean }} [options] */
     leave({ keepPlayback = false } = {}) {
+      onScreenKey = null;
       if (keepPlayback) {
         if (onScreen) {
           onScreen({ keepPlayback: true });
