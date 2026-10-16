@@ -4,6 +4,7 @@ import { createManagedObjectUrl, revokeManagedObjectUrl } from '../utils/object-
 import { updateBook } from '../storage/library-db.js';
 import { estimatePercent } from '../tts/playback-state.js';
 import { playbackManager } from '../services/playback-manager.js';
+import { createProgressSaver } from '../services/progress-saver.js';
 import {
   initMediaSession,
   setMediaPlaybackState,
@@ -465,7 +466,6 @@ export function renderMp3Player(container, book, { onBack, keepPlaybackOnBack = 
     updateBook(book.id, { finishedAt: Date.now() });
   });
 
-  let saveTimer = null;
   function saveProgress() {
     if (!player.duration) return;
     const percent = estimatePercent(trackIndex, totalTracks, player.currentTime, player.duration);
@@ -475,20 +475,32 @@ export function renderMp3Player(container, book, { onBack, keepPlaybackOnBack = 
     });
   }
 
-  player.addEventListener('timeupdate', () => {
-    clearTimeout(saveTimer);
-    saveTimer = setTimeout(saveProgress, 2000);
-  });
+  // Save every few seconds while playing, and immediately on pause, seek, or
+  // when the app is hidden or closed (iOS gives no later chance to save).
+  const saver = createProgressSaver({ save: saveProgress });
+  const saveOnHidden = () => {
+    if (document.visibilityState === 'hidden') saver.flush();
+  };
+  const saveOnPageHide = () => saver.flush();
+  player.addEventListener('timeupdate', () => saver.tick());
+  player.addEventListener('pause', () => saver.flush());
+  player.addEventListener('seeked', () => saver.flush());
+  document.addEventListener('visibilitychange', saveOnHidden);
+  window.addEventListener('pagehide', saveOnPageHide);
 
   /**
    * @param {{ keepPlayback?: boolean }} options
    */
   function cleanup(options = {}) {
     const { keepPlayback = false } = options;
-    clearTimeout(saveTimer);
-    saveProgress();
+    saver.flush();
     closeSheet();
     if (!keepPlayback) {
+      // Playback is really stopping: stop saving. (With keepPlayback the mini
+      // player keeps playing, so saving keeps going too.)
+      saver.dispose();
+      document.removeEventListener('visibilitychange', saveOnHidden);
+      window.removeEventListener('pagehide', saveOnPageHide);
       sleepTimer.destroy();
       player.pause();
       revokeManagedObjectUrl();
