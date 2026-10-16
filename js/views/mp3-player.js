@@ -63,7 +63,7 @@ export function renderMp3Player(container, book, { onBack, keepPlaybackOnBack = 
           <span class="book-percent" id="book-percent" aria-label="Book progress">0%</span>
         </div>
         ` : ''}
-        <audio id="main-audio"></audio>
+        <audio id="main-audio" preload="metadata"></audio>
         <div class="progress-section">
           <input type="range" class="seek-range" id="seek-bar" value="0" min="0" max="100" step="0.1" aria-label="Seek">
           <div class="time-labels">
@@ -465,7 +465,9 @@ export function renderMp3Player(container, book, { onBack, keepPlaybackOnBack = 
     seekBar.style.setProperty('--seek-pct', `${percent}%`);
   }
 
-  player.addEventListener('timeupdate', () => {
+  // Time labels, seek bar and lock-screen position. Also runs as soon as the
+  // file's metadata loads, so a just-opened book shows its length before Play.
+  function renderTime() {
     if (!player.duration) return;
     const percent = (player.currentTime / player.duration) * 100;
     seekBar.value = String(percent);
@@ -479,7 +481,10 @@ export function renderMp3Player(container, book, { onBack, keepPlaybackOnBack = 
       position: player.currentTime,
       playbackRate: player.playbackRate,
     });
-  });
+  }
+  player.addEventListener('timeupdate', renderTime);
+  player.addEventListener('loadedmetadata', renderTime);
+  player.addEventListener('durationchange', renderTime);
 
   seekBar.addEventListener('input', () => {
     setSeekFill(Number(seekBar.value));
