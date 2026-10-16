@@ -5,6 +5,7 @@ import { getStorageInfo, requestPersistentStorage, formatBytes } from '../utils/
 import { clearBookCache, clearAllCache, getCacheStats } from '../tts/chunk-cache.js';
 import { getAllBooks } from '../storage/library-db.js';
 import { icon } from '../utils/icons.js';
+import { openWelcome } from './welcome.js';
 import { unlockMediaForAutoplay } from '../utils/audio-unlock.js';
 
 const PREVIEW_BOOK_ID = 'voice-preview';
@@ -63,6 +64,10 @@ export async function renderSettings(container, { onBack }) {
       <p class="settings-note" id="save-status"></p>
       <p class="settings-note" id="storage-info">Checking storage…</p>
       <section class="cache-section">
+        <h2>About</h2>
+        <button type="button" class="welcome-open" id="welcome-btn">${icon('info', 20)} How this app works</button>
+      </section>
+      <section class="cache-section">
         <h2>AI audio cache</h2>
         <div id="cache-list"><p class="settings-note">Checking cache…</p></div>
       </section>
@@ -76,6 +81,8 @@ export async function renderSettings(container, { onBack }) {
   rateSlider.addEventListener('input', () => {
     rateValue.textContent = `${rateSlider.value}x`;
   });
+
+  container.querySelector('#welcome-btn').addEventListener('click', (e) => openWelcome({ opener: e.currentTarget }));
 
   container.querySelector('#back-btn').addEventListener('click', () => {
     stopPreview();

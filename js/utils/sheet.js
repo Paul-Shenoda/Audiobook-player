@@ -25,7 +25,7 @@ export function openSheet({ label, className = '', opener = document.activeEleme
   let closed = false;
 
   function focusables() {
-    return [...panel.querySelectorAll('button:not([disabled]), input:not([disabled]), [tabindex="0"]')];
+    return [...panel.querySelectorAll('button:not([disabled]), input:not([disabled]), a[href], [tabindex="0"]')];
   }
 
   function onKeydown(e) {

@@ -13,6 +13,7 @@ import { listShelves, renameShelf, createShelf, deleteShelf, shelfSummaries } fr
 import { openBookShelvesSheet, openShelfNameSheet } from './shelf-sheets.js';
 import { hashHue } from '../utils/cover-fallback.js';
 import { icon } from '../utils/icons.js';
+import { openWelcome } from './welcome.js';
 import {
   renderCoverMarkup,
   hydrateCoverUrls,
@@ -92,6 +93,7 @@ export async function renderLibrary(container, { onOpenBook, onOpenSettings }) {
         <ul class="sidebar-nav">
           <li><button class="sidebar-link ${activeShelf ? '' : 'sidebar-link--current'}" id="sidebar-all" type="button" ${activeShelf ? '' : 'aria-current="page"'}>${icon('library', 20)} Library</button></li>
           <li><button class="sidebar-link" id="sidebar-settings" type="button">${icon('settings', 20)} Settings</button></li>
+          <li><button class="sidebar-link" id="sidebar-help" type="button">${icon('info', 20)} How this app works</button></li>
         </ul>
         <div class="sidebar-shelves">
           <div class="sidebar-shelves-head">
@@ -341,6 +343,7 @@ export async function renderLibrary(container, { onOpenBook, onOpenSettings }) {
 
   container.querySelector('#settings-btn').addEventListener('click', onOpenSettings);
   container.querySelector('#sidebar-settings').addEventListener('click', onOpenSettings);
+  container.querySelector('#sidebar-help').addEventListener('click', (e) => openWelcome({ opener: e.currentTarget }));
   container.querySelector('#sidebar-add').addEventListener('click', () => {
     container.querySelector('#import-input').click();
   });

@@ -9,6 +9,7 @@ import { createAudioEngine } from './engines/audio-engine.js';
 import { createTtsEngine } from './engines/tts-engine.js';
 import { bridgeMediaSession } from './services/media-session-bridge.js';
 import { createViewLifecycle } from './services/view-lifecycle.js';
+import { maybeShowWelcome } from './views/welcome.js';
 import { getBook } from './storage/library-db.js';
 
 /** @type {HTMLElement} */
@@ -96,6 +97,7 @@ function runCleanup(options = {}) {
 }
 
 showLibrary();
+maybeShowWelcome();
 
 const updateSW = registerSW({
   onOfflineReady() {
