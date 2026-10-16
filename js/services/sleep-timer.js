@@ -1,82 +1,61 @@
 /**
- * Sleep timer for the players. Modes cycle in order; 'chapter' (stop at the
- * end of the current chapter) only applies to the EPUB player.
+ * Sleep timer used by the engines. It only runs the countdown for the timed
+ * modes; 'chapter' (stop at the end of the current chapter) is just remembered
+ * here and the engine acts on it when the chapter ends.
  */
 
-/** @typedef {'off'|'15'|'30'|'60'|'chapter'} SleepMode */
+/** @typedef {'off'|'15'|'30'|'chapter'} SleepMode */
+/** @typedef {{ mode: SleepMode, endsAt?: number }} SleepInfo */
 
-const MINUTES = { 15: 15, 30: 30, 60: 60 };
+const MINUTES = { 15: 15, 30: 30 };
 
 /**
- * @param {{
- *   modes: SleepMode[],
- *   onExpire: () => void,
- *   onTick: (label: string) => void,
- * }} options modes is the cycle order, starting with 'off'
+ * @param {{ onExpire: () => void }} options called when a timed mode runs out
  */
-export function createSleepTimer({ modes, onExpire, onTick }) {
+export function createSleepTimer({ onExpire }) {
   /** @type {SleepMode} */
   let mode = 'off';
-  /** @type {number|null} */
-  let deadline = null;
-  /** @type {ReturnType<typeof setInterval>|null} */
-  let interval = null;
+  /** @type {number|undefined} */
+  let endsAt;
+  /** @type {ReturnType<typeof setTimeout>|null} */
+  let timeout = null;
 
-  function label() {
-    if (mode === 'off') return 'Sleep: Off';
-    if (mode === 'chapter') return 'Sleep: End of chapter';
-    if (deadline == null) return `Sleep: ${mode} min`;
-    const remaining = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
-    const m = Math.floor(remaining / 60);
-    const s = String(remaining % 60).padStart(2, '0');
-    return `Sleep: ${m}:${s}`;
+  function clear() {
+    if (timeout) clearTimeout(timeout);
+    timeout = null;
+    endsAt = undefined;
   }
 
-  function clearCountdown() {
-    if (interval) clearInterval(interval);
-    interval = null;
-    deadline = null;
-  }
-
-  function startCountdown(minutes) {
-    deadline = Date.now() + minutes * 60_000;
-    interval = setInterval(() => {
-      if (deadline != null && Date.now() >= deadline) {
-        clearCountdown();
-        mode = 'off';
-        onTick(label());
-        onExpire();
-        return;
-      }
-      onTick(label());
-    }, 1000);
+  /** @returns {SleepInfo} */
+  function info() {
+    return endsAt == null ? { mode } : { mode, endsAt };
   }
 
   return {
-    /** Advance to the next mode in the cycle. */
-    cycle() {
-      clearCountdown();
-      mode = modes[(modes.indexOf(mode) + 1) % modes.length];
-      if (MINUTES[mode]) startCountdown(MINUTES[mode]);
-      onTick(label());
+    /**
+     * Switch mode (replacing any running countdown).
+     * @param {SleepMode} next
+     * @returns {SleepInfo} what to publish as the store's `sleep`
+     */
+    set(next) {
+      clear();
+      mode = MINUTES[next] || next === 'chapter' ? next : 'off';
+      if (MINUTES[mode]) {
+        const ms = MINUTES[mode] * 60_000;
+        endsAt = Date.now() + ms;
+        timeout = setTimeout(() => {
+          timeout = null;
+          mode = 'off';
+          endsAt = undefined;
+          onExpire();
+        }, ms);
+      }
+      return info();
     },
 
     /** @returns {SleepMode} */
-    getMode() {
-      return mode;
-    },
+    getMode: () => mode,
 
-    /** Reset to off (e.g. after an end-of-chapter stop). */
-    reset() {
-      clearCountdown();
-      mode = 'off';
-      onTick(label());
-    },
-
-    destroy() {
-      clearCountdown();
-    },
-
-    label,
+    destroy: clear,
   };
 }

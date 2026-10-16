@@ -262,3 +262,55 @@ describe('destroy', () => {
     expect(updateBook.mock.calls.length).toBe(saves);
   });
 });
+
+describe('sleep timer', () => {
+  it('a timed sleep reports its end time, then pauses and clears when it runs out', () => {
+    vi.useFakeTimers();
+    try {
+      const { audio, engine, last } = setup();
+      ready(audio);
+      engine.play();
+      engine.setSleep('15');
+      expect(last('sleep').mode).toBe('15');
+      expect(last('sleep').endsAt).toBeGreaterThan(Date.now());
+      vi.advanceTimersByTime(15 * 60_000);
+      expect(audio.paused).toBe(true);
+      expect(last('status')).toBe('paused');
+      expect(last('sleep')).toEqual({ mode: 'off' });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('end of chapter parks at the next track instead of rolling on', () => {
+    const { audio, engine, last } = setup({ tracks: [track('A'), track('B')] });
+    ready(audio);
+    engine.play();
+    engine.setSleep('chapter');
+    expect(last('sleep')).toEqual({ mode: 'chapter' });
+    audio.dispatchEvent(new Event('ended'));
+    expect(last('chapterIndex')).toBe(1);
+    expect(last('status')).toBe('paused');
+    expect(last('sleep')).toEqual({ mode: 'off' });
+    expect(audio.play).toHaveBeenCalledTimes(1);
+  });
+
+  it('end of chapter stops when playback crosses an embedded chapter marker', () => {
+    const chapters = [
+      { title: 'C1', startSeconds: 0 },
+      { title: 'C2', startSeconds: 100 },
+    ];
+    const { audio, engine, last } = setup({ tracks: [track('A', { chapters })] });
+    ready(audio, 300);
+    engine.play();
+    engine.setSleep('chapter');
+    audio.currentTime = 99;
+    audio.dispatchEvent(new Event('timeupdate'));
+    expect(audio.paused).toBe(false);
+    audio.currentTime = 100.2;
+    audio.dispatchEvent(new Event('timeupdate'));
+    expect(audio.paused).toBe(true);
+    expect(audio.currentTime).toBe(100);
+    expect(last('sleep')).toEqual({ mode: 'off' });
+  });
+});

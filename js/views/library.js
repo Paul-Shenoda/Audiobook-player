@@ -8,7 +8,7 @@ import { requestPersistentStorage } from '../utils/storage-persist.js';
 import { clearBookCache } from '../tts/chunk-cache.js';
 import { showToast } from '../utils/toast.js';
 import { isIOS } from '../utils/platform.js';
-import { filterBooks, searchBooks, sortBooks, pickContinueBook } from '../utils/book-filters.js';
+import { filterBooks, searchBooks, sortBooks, pickContinueBook, bookStatus } from '../utils/book-filters.js';
 import { icon } from '../utils/icons.js';
 import {
   renderCoverMarkup,
@@ -29,6 +29,12 @@ let activeFilter = 'all';
 /** @type {string} */
 let searchQuery = '';
 
+const VIEW_KEY = 'library-view';
+/** Phone layout: rows or covers. From 1024px the grid is always used. @type {'list'|'grid'} */
+let viewMode = localStorage.getItem(VIEW_KEY) === 'grid' ? 'grid' : 'list';
+
+const GRID_ICON = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="4" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.5"/></svg>';
+
 const SORT_KEY = 'library-sort';
 /** @type {'recent'|'title'|'author'} */
 let sortBy = /** @type {any} */ (localStorage.getItem(SORT_KEY)) || 'recent';
@@ -40,58 +46,69 @@ let sortBy = /** @type {any} */ (localStorage.getItem(SORT_KEY)) || 'recent';
 export async function renderLibrary(container, { onOpenBook, onOpenSettings }) {
   const books = await getAllBooks();
   const continueBook = pickContinueBook(books);
-  const recentBooks = [...books]
-    .sort((a, b) => b.addedAt - a.addedAt)
-    .slice(0, 8);
-
   container.innerHTML = `
     <div class="library-view">
-      <header class="library-header">
-        <h1 class="library-title">My Library</h1>
-        <div class="header-actions">
-          <button class="icon-btn-touch" id="settings-btn" type="button" aria-label="Settings">${icon('settings')}</button>
-          <button class="icon-btn-touch" id="combine-btn" type="button" aria-label="Combine chapter files into one audiobook">${icon('layers')}</button>
-          <input type="file" id="combine-input" accept=".mp3,.m4b,.m4a,.mp4,audio/mpeg,audio/mp4,audio/x-m4a,audio/x-m4b,video/mp4" multiple class="visually-hidden">
-          <label class="import-btn primary-btn">
-            ${icon('add', 20)} Add Books
-            <input type="file" id="import-input" accept=".mp3,.m4b,.m4a,.mp4,audio/mpeg,audio/mp4,audio/x-m4a,audio/x-m4b,video/mp4,.epub,application/epub+zip" multiple class="visually-hidden">
-          </label>
-        </div>
-      </header>
+      <nav class="library-sidebar" aria-label="Library navigation">
+        <div class="sidebar-brand">${icon('library', 28)}<span>My Library</span></div>
+        <ul class="sidebar-nav">
+          <li><button class="sidebar-link sidebar-link--current" type="button" aria-current="page">${icon('library', 20)} Library</button></li>
+          <li><button class="sidebar-link" id="sidebar-settings" type="button">${icon('settings', 20)} Settings</button></li>
+        </ul>
+        <button class="sidebar-add primary-btn" id="sidebar-add" type="button">${icon('add', 20)} Add books</button>
+        <button class="sidebar-link sidebar-combine" id="sidebar-combine" type="button">${icon('layers', 20)} Combine files</button>
+        <p class="sidebar-note">MP3, M4B, M4A and EPUB. Files stay in this browser.</p>
+      </nav>
 
-      <p class="import-hint">On iPhone: Files → On My iPhone → select one or more EPUBs. Multiple chapter files for the same book? Use the combine icon (${icon('layers', 14)}) instead.</p>
+      <div class="library-main">
+        <header class="library-header">
+          <h1 class="library-title">Library</h1>
+          <div class="header-actions">
+            <button class="round-btn" id="search-toggle" type="button" aria-label="Search library" aria-expanded="${searchQuery ? 'true' : 'false'}">${icon('search', 20)}</button>
+            <button class="round-btn header-extra" id="settings-btn" type="button" aria-label="Settings">${icon('settings', 20)}</button>
+            <button class="round-btn header-extra" id="combine-btn" type="button" aria-label="Combine chapter files into one audiobook">${icon('layers', 20)}</button>
+            <input type="file" id="combine-input" accept=".mp3,.m4b,.m4a,.mp4,audio/mpeg,audio/mp4,audio/x-m4a,audio/x-m4b,video/mp4" multiple class="visually-hidden">
+            <label class="round-btn round-btn--accent import-btn" title="Add books">
+              ${icon('add', 22)}<span class="visually-hidden">Add books</span>
+              <input type="file" id="import-input" accept=".mp3,.m4b,.m4a,.mp4,audio/mpeg,audio/mp4,audio/x-m4a,audio/x-m4b,video/mp4,.epub,application/epub+zip" multiple class="visually-hidden">
+            </label>
+          </div>
+        </header>
 
-      <div id="import-status" class="import-status" hidden></div>
-
-      <div class="filter-tabs" role="tablist">
-        ${renderFilterTab('all', 'All', activeFilter)}
-        ${renderFilterTab('epub', 'EPUB', activeFilter)}
-        ${renderFilterTab('mp3', 'Audio', activeFilter)}
-        ${renderFilterTab('finished', 'Finished', activeFilter)}
-      </div>
-
-      <div class="library-toolbar">
-        <div class="search-box">
+        <div class="search-box ${searchQuery ? 'search-box--open' : ''}" id="search-box">
           ${icon('search', 18)}
           <input type="search" id="search-input" placeholder="Search title or author" value="${escapeAttr(searchQuery)}" aria-label="Search library">
         </div>
-        <select id="sort-select" aria-label="Sort library">
-          <option value="recent" ${sortBy === 'recent' ? 'selected' : ''}>Recent</option>
-          <option value="title" ${sortBy === 'title' ? 'selected' : ''}>Title</option>
-          <option value="author" ${sortBy === 'author' ? 'selected' : ''}>Author</option>
-        </select>
+
+        <p class="import-hint">On iPhone: Files → On My iPhone → select one or more EPUBs. Multiple chapter files for the same book? Use the combine icon (${icon('layers', 14)}) instead.</p>
+
+        <div id="import-status" class="import-status" hidden></div>
+
+        ${continueBook ? renderContinueRow(continueBook) : ''}
+
+        <section class="library-section">
+          <div class="library-controls">
+            <div class="filter-tabs" role="tablist" aria-label="Filter books">
+              ${renderFilterTab('all', 'All', activeFilter)}
+              ${renderFilterTab('epub', 'EPUB', activeFilter)}
+              ${renderFilterTab('mp3', 'Audio', activeFilter)}
+              ${renderFilterTab('finished', 'Finished', activeFilter)}
+            </div>
+            <div class="library-toolbar">
+              <label class="sort-wrap">${icon('sort', 18)}
+                <select id="sort-select" aria-label="Sort library">
+                  <option value="recent" ${sortBy === 'recent' ? 'selected' : ''}>Recent</option>
+                  <option value="title" ${sortBy === 'title' ? 'selected' : ''}>Title</option>
+                  <option value="author" ${sortBy === 'author' ? 'selected' : ''}>Author</option>
+                </select>
+              </label>
+              <button class="round-btn view-toggle" id="view-toggle" type="button" aria-label="${viewMode === 'grid' ? 'Show as list' : 'Show as grid'}">${viewMode === 'grid' ? icon('list', 18) : GRID_ICON}</button>
+            </div>
+          </div>
+          <div id="library-books" class="library-books" data-view="${viewMode}"></div>
+        </section>
+
+        ${isIOS() ? '<p class="storage-notice">Books are stored in this browser. Safari may free space if storage is low.</p>' : ''}
       </div>
-
-      ${continueBook ? renderContinueRow(continueBook) : ''}
-
-      ${recentBooks.length > 1 ? renderRecentShelf(recentBooks) : ''}
-
-      <section class="library-section">
-        <h2 class="section-heading">Your Library</h2>
-        <div id="library-books"></div>
-      </section>
-
-      ${isIOS() ? '<p class="storage-notice">Books are stored in this browser. Safari may free space if storage is low.</p>' : ''}
     </div>
   `;
 
@@ -168,10 +185,37 @@ export async function renderLibrary(container, { onOpenBook, onOpenSettings }) {
   }
 
   await renderBooksArea();
-  await hydrateCoverUrls([...(continueBook ? [continueBook] : []), ...recentBooks]);
-  patchCoversInDom(container, [...(continueBook ? [continueBook] : []), ...recentBooks]);
+  if (continueBook) {
+    await hydrateCoverUrls([continueBook]);
+    patchCoversInDom(container, [continueBook]);
+  }
 
   container.querySelector('#settings-btn').addEventListener('click', onOpenSettings);
+  container.querySelector('#sidebar-settings').addEventListener('click', onOpenSettings);
+  container.querySelector('#sidebar-add').addEventListener('click', () => {
+    container.querySelector('#import-input').click();
+  });
+  container.querySelector('#sidebar-combine').addEventListener('click', () => {
+    container.querySelector('#combine-input').click();
+  });
+
+  const searchBox = container.querySelector('#search-box');
+  const searchToggle = container.querySelector('#search-toggle');
+  searchToggle.addEventListener('click', () => {
+    const open = !searchBox.classList.contains('search-box--open');
+    searchBox.classList.toggle('search-box--open', open);
+    searchToggle.setAttribute('aria-expanded', String(open));
+    if (open) container.querySelector('#search-input').focus();
+  });
+
+  container.querySelector('#view-toggle').addEventListener('click', () => {
+    viewMode = viewMode === 'grid' ? 'list' : 'grid';
+    localStorage.setItem(VIEW_KEY, viewMode);
+    booksArea.setAttribute('data-view', viewMode);
+    const toggle = container.querySelector('#view-toggle');
+    toggle.setAttribute('aria-label', viewMode === 'grid' ? 'Show as list' : 'Show as grid');
+    toggle.innerHTML = viewMode === 'grid' ? icon('list', 18) : GRID_ICON;
+  });
 
   container.querySelector('#search-input').addEventListener('input', (e) => {
     searchQuery = e.target.value;
@@ -259,14 +303,6 @@ export async function renderLibrary(container, { onOpenBook, onOpenSettings }) {
       onOpenBook(continueBook);
     });
   }
-
-  container.querySelectorAll('[data-recent-id]').forEach((el) => {
-    el.addEventListener('click', () => {
-      const id = el.getAttribute('data-recent-id');
-      const book = books.find((b) => b.id === id);
-      if (book) onOpenBook(book);
-    });
-  });
 }
 
 /**
@@ -454,12 +490,12 @@ function renderFilterTab(filter, label, active) {
  * @param {Book} book
  */
 function renderContinueRow(book) {
-  const percent = book.progress?.percent ?? 0;
+  const { percent } = bookStatus(book);
 
   return `
-    <section class="continue-section">
-      <h2 class="section-heading">Continue Listening</h2>
-      <button class="continue-card" data-continue-id="${book.id}" type="button">
+    <section class="continue-section" aria-labelledby="continue-heading">
+      <h2 class="section-heading" id="continue-heading">Continue listening</h2>
+      <button class="continue-card" data-continue-id="${book.id}" type="button" aria-label="Continue ${escapeAttr(book.title)}">
         <div class="cover-wrap cover-wrap--sm">
           ${renderCoverMarkup(book)}
         </div>
@@ -472,28 +508,8 @@ function renderContinueRow(book) {
           </div>
           <span class="progress-label">${percent}% complete</span>
         </div>
+        <span class="continue-play" aria-hidden="true">${icon('play', 22)}</span>
       </button>
-    </section>
-  `;
-}
-
-/**
- * @param {Book[]} books
- */
-function renderRecentShelf(books) {
-  return `
-    <section class="recent-section">
-      <h2 class="section-heading">Recently Added</h2>
-      <div class="recent-scroll">
-        ${books.map((book) => `
-          <button class="recent-card" data-recent-id="${book.id}" type="button">
-            <div class="cover-wrap cover-wrap--recent">
-              ${renderCoverMarkup(book)}
-            </div>
-            <p class="recent-title">${escapeHtml(book.title)}</p>
-          </button>
-        `).join('')}
-      </div>
     </section>
   `;
 }
@@ -514,24 +530,28 @@ function renderBookGrid(books) {
  */
 function renderBookCard(book) {
   const badge = getFormatBadge(book);
+  const status = bookStatus(book);
 
   return `
     <div class="book-card-wrap">
       <button class="book-card" data-book-id="${book.id}" type="button">
         <div class="cover-wrap">
           ${renderCoverMarkup(book)}
-          <span class="format-badge">${badge}</span>
+          ${status.kind === 'progress' ? `<span class="cover-progress" aria-hidden="true"><span style="width: ${status.percent}%"></span></span>` : ''}
         </div>
-        <p class="book-title">${escapeHtml(book.title)}</p>
-        <p class="book-author">${escapeHtml(book.author)}</p>
-        ${book.series ? `<p class="book-series">${escapeHtml(seriesLabel(book.series))}</p>` : ''}
+        <div class="book-text">
+          <p class="book-title">${escapeHtml(book.title)}</p>
+          <p class="book-author">${escapeHtml(book.author)}</p>
+          ${book.series ? `<p class="book-series">${escapeHtml(seriesLabel(book.series))}</p>` : ''}
+          <p class="book-meta"><span class="type-chip">${badge}</span><span class="book-status book-status--${status.kind}">${status.label}</span></p>
+        </div>
       </button>
       <div class="book-card-menu">
-        <button class="book-menu-btn icon-btn-touch" data-book-id="${book.id}" type="button" aria-label="Book options">${icon('more')}</button>
-        <div class="book-menu">
-          <button type="button" data-edit-id="${book.id}">${icon('edit', 18)} Edit details</button>
-          <button type="button" data-finish-id="${book.id}">${icon('check', 18)} ${book.finishedAt ? 'Mark unfinished' : 'Mark finished'}</button>
-          <button type="button" data-delete-id="${book.id}">${icon('trash', 18)} Remove</button>
+        <button class="book-menu-btn icon-btn-touch" data-book-id="${book.id}" type="button" aria-label="More options for ${escapeAttr(book.title)}" aria-haspopup="menu">${icon('more')}</button>
+        <div class="book-menu" role="menu">
+          <button type="button" role="menuitem" data-edit-id="${book.id}">${icon('edit', 18)} Edit details</button>
+          <button type="button" role="menuitem" data-finish-id="${book.id}">${icon('check', 18)} ${book.finishedAt ? 'Mark unfinished' : 'Mark finished'}</button>
+          <button type="button" role="menuitem" data-delete-id="${book.id}">${icon('trash', 18)} Remove</button>
         </div>
       </div>
     </div>
@@ -581,7 +601,7 @@ function patchCoversInDom(container, books) {
     if (!url) continue;
 
     const wraps = container.querySelectorAll(
-      `[data-book-id="${book.id}"] .cover-wrap, [data-continue-id="${book.id}"] .cover-wrap, [data-recent-id="${book.id}"] .cover-wrap`,
+      `[data-book-id="${book.id}"] .cover-wrap, [data-continue-id="${book.id}"] .cover-wrap`,
     );
     wraps.forEach((wrap) => {
       if (wrap.querySelector('img')) return;

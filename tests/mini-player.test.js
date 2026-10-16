@@ -14,6 +14,7 @@ function makeStore() {
     skip: vi.fn(),
     goToChapter: vi.fn(),
     seekInChapter: vi.fn(),
+    setSleep: vi.fn(),
     destroy: vi.fn(),
   };
   const store = createPlayerStore({ createEngine: () => engine });
@@ -81,5 +82,35 @@ describe('mountMiniPlayer', () => {
     unmount();
     emit({ status: 'playing' });
     expect(container.innerHTML).toBe('');
+  });
+
+  it('shows the chapter title, progress line and speed from the store', () => {
+    const { store, emit } = makeStore();
+    mountMiniPlayer(container, { store, onOpenBook: () => {} });
+    store.open(book);
+    emit({ chapters: [{ title: 'One' }, { title: 'Two' }], chapterIndex: 1, bookPercent: 42, rate: 1.25 });
+    expect(container.querySelector('.mini-sub').textContent).toBe('Two');
+    expect(container.querySelector('.mini-progress-fill').style.width).toBe('42%');
+    expect(container.querySelector('#mini-speed').textContent).toBe('1.25×');
+  });
+
+  it('keeps the same buttons across ticks (no rebuild)', () => {
+    const { store, emit } = makeStore();
+    mountMiniPlayer(container, { store, onOpenBook: () => {} });
+    store.open(book);
+    const btn = container.querySelector('#mini-play');
+    emit({ status: 'playing', bookPercent: 5 });
+    emit({ bookPercent: 6 });
+    expect(container.querySelector('#mini-play')).toBe(btn);
+  });
+
+  it('back 15 and forward 30 skip through the store', () => {
+    const { store, engine } = makeStore();
+    mountMiniPlayer(container, { store, onOpenBook: () => {} });
+    store.open(book);
+    container.querySelector('#mini-back').click();
+    container.querySelector('#mini-forward').click();
+    expect(engine.skip).toHaveBeenNthCalledWith(1, -15);
+    expect(engine.skip).toHaveBeenNthCalledWith(2, 30);
   });
 });

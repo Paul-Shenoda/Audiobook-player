@@ -57,6 +57,18 @@ function hasStarted(book) {
 }
 
 /**
+ * Short status for a book card: finished, in progress (with percent) or not started.
+ * @param {object} book
+ * @returns {{ kind: 'finished'|'progress'|'new', percent: number, label: string }}
+ */
+export function bookStatus(book) {
+  if (book.finishedAt) return { kind: 'finished', percent: 100, label: 'Finished' };
+  const percent = Math.round(book.progress?.percent ?? 0);
+  if (hasStarted(book)) return { kind: 'progress', percent, label: `${percent}%` };
+  return { kind: 'new', percent: 0, label: 'Not started' };
+}
+
+/**
  * The book for the "Continue Listening" row: the most recently opened book
  * that is started and not finished, or null.
  * @param {object[]} books

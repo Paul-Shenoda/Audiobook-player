@@ -16,6 +16,7 @@ function makeFakeEngine() {
     skip: vi.fn(),
     goToChapter: vi.fn(),
     seekInChapter: vi.fn(),
+    setSleep: vi.fn(),
     destroy: vi.fn(),
   };
   return engine;
@@ -164,6 +165,16 @@ describe('createPlayerStore', () => {
     expect(engines[0].seekInChapter).toHaveBeenCalledWith(0.5);
   });
 
+  it('starts with the sleep timer off and forwards setSleep to the engine', () => {
+    const { store, engines } = setup();
+    store.open(mp3Book);
+    expect(store.getState().sleep).toEqual({ mode: 'off' });
+    store.setSleep('chapter');
+    expect(engines[0].setSleep).toHaveBeenCalledWith('chapter');
+    engines[0].emit({ sleep: { mode: '15', endsAt: 123 } });
+    expect(store.getState().sleep).toEqual({ mode: '15', endsAt: 123 });
+  });
+
   it('does not go past the first or last chapter', () => {
     const { store, engines } = setup();
     store.open(mp3Book);
@@ -186,6 +197,7 @@ describe('createPlayerStore', () => {
       store.skip(5);
       store.nextChapter();
       store.seekInChapter(0.1);
+      store.setSleep('15');
       store.stop();
     }).not.toThrow();
   });

@@ -3,6 +3,7 @@ import { createManagedObjectUrl, revokeManagedObjectUrl } from '../utils/object-
 import { estimatePercent } from '../tts/playback-state.js';
 import { createProgressSaver } from '../services/progress-saver.js';
 import { clampSpeed } from '../utils/playback-speed.js';
+import { createSleepTimer } from '../services/sleep-timer.js';
 
 /**
  * @typedef {import('../storage/library-db.js').Book} Book
@@ -56,6 +57,14 @@ export function createAudioEngine({
   let hasPlayed = false;
   /** @type {ReturnType<typeof createProgressSaver>|null} */
   let saver = null;
+  // Chapter the 'end of chapter' sleep was set in (embedded chapters only).
+  let sleepChapter = 0;
+  const sleepTimer = createSleepTimer({
+    onExpire: () => {
+      audio.pause();
+      emit({ sleep: { mode: 'off' } });
+    },
+  });
   /** @type {Array<[EventTarget, string, EventListener]>} */
   const listeners = [];
 
@@ -191,13 +200,37 @@ export function createAudioEngine({
     emit({ status: 'paused' });
   }
 
+  function currentChapter() {
+    if (hasTrackChapters) return trackIndex;
+    return hasFileChapters ? fileChapterIndex() : 0;
+  }
+
+  /** Stop for the 'end of chapter' sleep once playback has left the chapter it was set in. */
+  function checkChapterSleep() {
+    if (sleepTimer.getMode() !== 'chapter' || !hasFileChapters) return;
+    const idx = fileChapterIndex();
+    if (idx > sleepChapter) {
+      audio.currentTime = fileChapters[idx].startSeconds;
+      audio.pause();
+      emit({ sleep: sleepTimer.set('off') });
+    } else {
+      sleepChapter = idx;
+    }
+  }
+
   function onEnded() {
+    if (sleepTimer.getMode() === 'chapter' && hasTrackChapters && trackIndex < tracks.length - 1) {
+      // Park at the start of the next track instead of rolling on.
+      loadTrack(trackIndex + 1);
+      emit({ status: 'paused', sleep: sleepTimer.set('off') });
+      return;
+    }
     if (trackIndex < tracks.length - 1) {
       loadTrack(trackIndex + 1, { autoplay: true });
       return;
     }
     saver.flush();
-    emit({ status: 'paused' });
+    emit({ status: 'paused', sleep: sleepTimer.set('off') });
     updateBook(book.id, { finishedAt: Date.now() }).catch(err => console.warn('Could not save finish', err));
   }
 
@@ -229,6 +262,7 @@ export function createAudioEngine({
       listen(audio, 'timeupdate', () => {
         saver.tick();
         publish();
+        checkChapterSleep();
       });
       listen(audio, 'loadedmetadata', () => {
         metaLoaded = true;
@@ -292,6 +326,12 @@ export function createAudioEngine({
       updateBook(book.id, { playbackRate: rate }).catch(err => console.warn('Could not save speed', err));
     },
 
+    /** @param {import('../services/sleep-timer.js').SleepMode} mode */
+    setSleep(mode) {
+      sleepChapter = currentChapter();
+      emit({ sleep: sleepTimer.set(mode) });
+    },
+
     /** Move by seconds, crossing files in a multi-file book; clamped to the book. */
     skip(seconds) {
       const dur = duration();
@@ -325,6 +365,7 @@ export function createAudioEngine({
       } else if (hasFileChapters) {
         if (index < 0 || index >= fileChapters.length) return;
         audio.currentTime = fileChapters[index].startSeconds;
+        sleepChapter = index;
         publish();
       }
     },
@@ -347,6 +388,7 @@ export function createAudioEngine({
       if (destroyed) return;
       saver?.flush();
       saver?.dispose();
+      sleepTimer.destroy();
       for (const [target, type, fn] of listeners) target.removeEventListener(type, fn);
       listeners.length = 0;
       destroyed = true;

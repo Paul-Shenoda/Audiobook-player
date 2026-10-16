@@ -8,10 +8,10 @@ deployment. Full feature list and setup: [README.md](README.md).
 
 | Area | Path | What |
 |---|---|---|
-| Views (screens) | `js/views/` | library, mp3-player, epub-listen, settings, mini-player |
+| Views (screens) | `js/views/` | library, now-playing (one player for every book), chapters-sheet, settings, mini-player |
 | TTS providers | `js/tts/` | pluggable narrator registry — web-speech, openai, elevenlabs, google, kokoro |
 | Library data | `js/storage/library-db.js` | the `Book` record, IndexedDB |
-| Services | `js/services/` | import, playback-manager (cross-view "what's playing" state), media session, sleep timer |
+| Services | `js/services/` | import, player-store (the one playback state), media-session-bridge, bookmarks, sleep timer |
 | Styles | `css/` | style.css (shared tokens), library.css, player.css |
 | Deploy | `.github/workflows/deploy.yml` | push to `master` → build → GitHub Pages |
 

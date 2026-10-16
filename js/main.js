@@ -1,13 +1,13 @@
 import { registerSW } from 'virtual:pwa-register';
 import { renderLibrary } from './views/library.js';
 import { showToast } from './utils/toast.js';
-import { renderMp3Player } from './views/mp3-player.js';
-import { renderEpubListen } from './views/epub-listen.js';
+import { renderNowPlaying } from './views/now-playing.js';
 import { renderSettings } from './views/settings.js';
 import { mountMiniPlayer } from './views/mini-player.js';
 import { playerStore } from './services/player-store.js';
 import { createAudioEngine } from './engines/audio-engine.js';
 import { createTtsEngine } from './engines/tts-engine.js';
+import { bridgeMediaSession } from './services/media-session-bridge.js';
 import { createViewLifecycle } from './services/view-lifecycle.js';
 import { getBook } from './storage/library-db.js';
 
@@ -40,6 +40,9 @@ const lifecycle = createViewLifecycle({ clearPlayback: () => playerStore.close()
 // One engine per open book: audio files play through <audio>, EPUBs through TTS.
 playerStore.setEngineFactory((kind) => (kind === 'audio' ? createAudioEngine() : createTtsEngine()));
 
+// Lock-screen controls follow the store too, not any one view.
+bridgeMediaSession(playerStore);
+
 // The mini player follows the store by itself; no view needs to redraw it.
 mountMiniPlayer(miniPlayerEl, { onOpenBook: openBook });
 
@@ -62,35 +65,23 @@ async function openBook(book) {
   // refresh its speed and position from the database. Keep the original file
   // Blob(s): a Blob read now can be stale by the time Safari reads it.
   const saved = await getBook(book.id).catch(() => null);
-  const current = saved ? { ...book, progress: saved.progress, playbackRate: saved.playbackRate } : book;
-  if (current.type === 'mp3') {
-    showMp3Player(current);
-  } else {
-    showEpubListen(current);
-  }
+  const current = saved
+    ? { ...book, progress: saved.progress, playbackRate: saved.playbackRate, bookmarks: saved.bookmarks }
+    : book;
+  showNowPlaying(current);
 }
 
 /**
+ * One Now playing screen for both audio books and EPUBs.
  * @param {import('./storage/library-db.js').Book} book
  */
-function showMp3Player(book) {
-  runCleanup({ keepPlayback: false });
-  const view = renderMp3Player(app, book, {
-    onBack: showLibrary,
-    keepPlaybackOnBack: true,
-  });
-  lifecycle.show(view.cleanup, book.id);
-}
-
-/**
- * @param {import('./storage/library-db.js').Book} book
- */
-async function showEpubListen(book) {
-  runCleanup({ keepPlayback: false });
-  const view = await renderEpubListen(app, book, {
-    onBack: showLibrary,
+function showNowPlaying(book) {
+  // The book is already loaded (e.g. reopened from the mini player): keep it
+  // playing and just draw the screen again. Any other book replaces it.
+  runCleanup({ keepPlayback: playerStore.getState().book?.id === book.id });
+  const view = renderNowPlaying(app, book, {
+    onClose: showLibrary,
     onOpenSettings: showSettings,
-    keepPlaybackOnBack: true,
   });
   lifecycle.show(view.cleanup, book.id);
 }

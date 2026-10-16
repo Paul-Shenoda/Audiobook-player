@@ -1,433 +1,648 @@
-.player-view {
+/* Now playing screen, chapters sheet, speed sheet. Colours come from tokens.css only. */
+
+.np {
+    position: relative;
     min-height: 100vh;
+    min-height: 100dvh;
+    max-width: 480px;
+    margin: 0 auto;
+    padding: calc(var(--space-2) + env(safe-area-inset-top)) var(--space-5) calc(var(--space-5) + env(safe-area-inset-bottom));
     display: flex;
     flex-direction: column;
+    gap: 18px;
+    overflow: hidden;
 }
 
-.player-container {
-    flex: 1;
+/* The mini player is redundant while the full player is open. */
+body:has(.np) .mini-player-bar {
+    display: none;
+}
+
+#app:has(.np),
+#app:has(+ .mini-player-bar--visible):has(.np) {
+    padding-bottom: 0;
+}
+
+.np-glow {
+    position: absolute;
+    left: -60px;
+    right: -60px;
+    top: 40px;
+    height: 420px;
+    background: radial-gradient(closest-side, var(--accent-ring), var(--cover-teal) 55%, transparent 100%);
+    opacity: 0.45;
+    pointer-events: none;
+}
+
+.np > :not(.np-glow) {
+    position: relative;
+}
+
+.np-header {
     display: flex;
-    flex-direction: column;
+    align-items: center;
+    justify-content: space-between;
+    height: 48px;
+}
+
+.np-chapter {
+    font-size: 0.875rem;
+    color: var(--ink-2);
+    text-align: center;
+}
+
+.np-icon-btn,
+.ns-icon-btn {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    display: inline-flex;
     align-items: center;
     justify-content: center;
-    padding: 24px 20px 40px;
-    max-width: 440px;
-    margin: 0 auto;
+    color: var(--ink);
+}
+
+.np-stage {
+    height: 290px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.np-cover {
+    width: 282px;
+    height: 282px;
+    border-radius: var(--r-16);
+    overflow: hidden;
+    background: var(--cover-teal);
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+}
+
+.np-cover[hidden],
+.np-readalong[hidden] {
+    display: none;
+}
+
+.np-cover-img {
     width: 100%;
-}
-
-.player-cover-wrap {
-    margin-bottom: 28px;
-    transition: margin var(--duration-base) var(--ease-out);
-}
-
-.player-cover {
-    width: 240px;
-    height: 240px;
+    height: 100%;
     object-fit: cover;
-    border-radius: var(--radius-lg);
-    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45), 0 4px 18px var(--primary-ring);
     display: block;
-    transition: width var(--duration-base) var(--ease-out),
-        height var(--duration-base) var(--ease-out);
 }
 
-.player-title {
-    font-size: 1.5rem;
-    font-weight: 700;
+.np-readalong {
+    width: 100%;
+    height: 290px;
+    padding: var(--space-5) var(--space-4) var(--space-4);
+    border-radius: var(--r-16);
+    background: var(--surface);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    overflow: hidden;
+}
+
+.np-readalong-hint {
+    font-size: 0.8125rem;
+    color: var(--muted);
+}
+
+.np-readalong-text {
+    flex: 1;
+    overflow-y: auto;
+    position: relative;
+    font-size: 1.1875rem;
+    line-height: 1.5;
+    color: var(--muted);
+    text-wrap: pretty;
+}
+
+.np-chunk {
+    cursor: pointer;
+    border-radius: 4px;
+}
+
+.np-chunk--current {
+    color: var(--ink);
+    background: var(--accent-subtle);
+    box-shadow: 0 0 0 3px var(--accent-subtle);
+}
+
+.np-meta {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--space-3);
+}
+
+.np-meta-text {
+    min-width: 0;
+}
+
+.np-title {
+    font-size: 1.75rem;
+    font-weight: 800;
     letter-spacing: -0.02em;
-    line-height: 1.25;
+    line-height: 1.05;
+    overflow-wrap: anywhere;
 }
 
-.player-author {
-    color: var(--text-secondary);
-    font-size: 1rem;
+.np-author {
     margin-top: 6px;
+    font-size: 0.9375rem;
+    color: var(--muted);
 }
 
-.player-series {
-    color: var(--text-secondary);
-    font-size: 0.85rem;
-    font-weight: 500;
+.np-status {
     margin-top: 4px;
-    opacity: 0.8;
+    font-size: 0.8125rem;
+    color: var(--muted);
 }
 
-.metadata-section {
-    text-align: center;
+.np-status:empty {
+    display: none;
+}
+
+.np-status--error {
+    color: var(--danger);
+}
+
+.np-bookmark {
+    width: 44px;
+    height: 44px;
+    flex-shrink: 0;
+    border-radius: 50%;
+    border: 1px solid var(--rule);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.np-progress {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+}
+
+.np-scrub {
+    position: relative;
+    height: 44px;
+    margin: -12px 0;
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    touch-action: none;
+}
+
+.np-scrub-track {
     width: 100%;
-    margin-bottom: 8px;
+    height: 6px;
+    border-radius: var(--r-pill);
+    background: var(--track);
 }
 
-.chapter-label {
-    text-align: center;
-    color: var(--text-secondary);
-    font-size: 0.95rem;
-    font-weight: 500;
-    margin: 16px 0 8px;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
+.np-scrub-fill {
+    width: 0;
+    height: 100%;
+    border-radius: var(--r-pill);
+    background: var(--ink);
 }
 
-.progress-section {
-    width: 100%;
-    margin: 8px 0 24px;
+.np-scrub-thumb {
+    position: absolute;
+    left: -8px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--ink);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+    pointer-events: none;
 }
 
-.time-labels {
+.np-times {
     display: flex;
     justify-content: space-between;
-    font-size: 0.8rem;
-    color: var(--text-secondary);
-    margin-top: 8px;
+    font-size: 0.8125rem;
+    color: var(--muted);
     font-variant-numeric: tabular-nums;
 }
 
-/* Slim, Spotify-style scrubber: flat track with a filled portion, custom
-   thumb that stays small at rest and grows on hover/drag so the track reads
-   clean when untouched. */
-.seek-range {
-    -webkit-appearance: none;
-    appearance: none;
-    width: 100%;
-    height: 16px;
-    background: transparent;
-    margin: 0;
-}
-
-.seek-range::-webkit-slider-runnable-track {
-    height: 4px;
-    border-radius: var(--radius-pill);
-    /* Chromium/WebKit don't auto-fill a custom (appearance:none) track the
-       way they do the default one, so the played portion is painted here
-       from a --seek-pct custom property the player keeps in sync with
-       playback (Firefox gets the same look natively via -moz-range-progress
-       above). */
-    background: linear-gradient(
-        to right,
-        var(--primary-color) var(--seek-pct, 0%),
-        var(--surface-color) var(--seek-pct, 0%)
-    );
-}
-
-.seek-range::-moz-range-track {
-    height: 4px;
-    border-radius: var(--radius-pill);
-    background: var(--surface-color);
-}
-
-.seek-range::-moz-range-progress {
-    height: 4px;
-    border-radius: var(--radius-pill);
-    background: var(--primary-color);
-}
-
-.seek-range::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    width: 12px;
-    height: 12px;
-    margin-top: -4px;
-    border-radius: 50%;
-    background: var(--text-color);
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
-    transform: scale(0.001);
-    transition: transform var(--duration-fast) var(--ease-out);
-}
-
-.seek-range::-moz-range-thumb {
-    width: 12px;
-    height: 12px;
-    border: none;
-    border-radius: 50%;
-    background: var(--text-color);
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
-    transform: scale(0.001);
-    transition: transform var(--duration-fast) var(--ease-out);
-}
-
-.seek-range:hover::-webkit-slider-thumb,
-.seek-range:active::-webkit-slider-thumb,
-.seek-range:focus-visible::-webkit-slider-thumb {
-    transform: scale(1);
-}
-
-.seek-range:hover::-moz-range-thumb,
-.seek-range:active::-moz-range-thumb,
-.seek-range:focus-visible::-moz-range-thumb {
-    transform: scale(1);
-}
-
-.controls-section {
+.np-book {
     display: flex;
     align-items: center;
-    justify-content: center;
-    gap: 16px;
-    margin-top: 8px;
+    gap: 10px;
+    margin-top: 2px;
+    font-size: 0.8125rem;
+    color: var(--ink-2);
 }
 
-.controls-section--transport {
-    gap: 28px;
-}
-
-.skip-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--text-secondary);
-    background: none;
-    border-radius: 50%;
-    width: 52px;
-    height: 52px;
-    min-width: 52px;
-    min-height: 52px;
-    transition: color var(--duration-fast) var(--ease-out),
-        background-color var(--duration-fast) var(--ease-out);
-}
-
-.skip-btn:hover {
-    color: var(--text-color);
-    background-color: var(--surface-color);
-}
-
-.chapter-btn {
-    padding: 8px 12px;
-    background-color: var(--surface-color);
-    border-radius: 12px;
-    min-width: 48px;
-    min-height: 48px;
-    flex-direction: column;
-    gap: 2px;
-}
-
-.chapter-btn span {
-    font-size: 0.65rem;
-    font-weight: 500;
-    color: var(--text-secondary);
-}
-
-.play-btn {
-    min-width: 80px;
-    min-height: 72px;
-    padding: 0 24px;
-    background-color: var(--primary-color);
-    color: var(--on-primary);
-    border-radius: var(--radius-pill);
-    font-size: 1rem;
-    font-weight: 600;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 4px;
-    box-shadow: 0 4px 15px var(--accent-ring);
-    transition: transform var(--duration-fast) var(--ease-out);
-}
-
-.play-btn:active {
-    transform: scale(0.94);
-}
-
-/* Big circular transport button — Spotify/Audible-style primary control. */
-.play-btn--circle {
-    width: 76px;
-    height: 76px;
-    min-width: 76px;
-    min-height: 76px;
-    padding: 0;
-    border-radius: 50%;
-}
-
-.listen-btn span {
-    font-size: 0.75rem;
-    font-weight: 600;
-}
-
-.epub-progress-section {
-    width: 100%;
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    margin: 16px 0 24px;
-}
-
-.epub-progress-section .progress-bar-track {
-    cursor: pointer;
-}
-
-.epub-progress-section .progress-bar-track:hover {
-    background: var(--border-color);
-}
-
-.epub-progress-section .progress-bar-track:active {
-    opacity: 0.85;
-}
-
-.time-left-label {
-    font-size: 0.85rem;
-    color: var(--text-secondary);
-    white-space: nowrap;
-    font-weight: 500;
-}
-
-.secondary-controls {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 4px;
-    margin-top: 16px;
-    flex-wrap: wrap;
-}
-
-.secondary-controls-divider {
-    width: 1px;
-    height: 18px;
-    background: var(--border-color);
-    margin: 0 4px;
-}
-
-.stop-btn {
-    background: none;
-    color: var(--text-secondary);
-    padding: 6px 14px;
-    border-radius: 8px;
-    font-size: 0.8rem;
-    min-height: 36px;
-}
-
-.stop-btn:hover {
-    background: var(--surface-color);
-    color: var(--text-color);
-}
-
-.speed-control {
-    display: flex;
-    align-items: center;
-    gap: 2px;
-}
-
-.speed-step-btn {
-    background: none;
-    border-radius: 8px;
-    font-size: 1rem;
-    font-weight: 600;
-    width: 36px;
-    height: 36px;
-    line-height: 1;
-    color: var(--text-secondary);
-}
-
-.speed-step-btn:hover:not(:disabled) {
-    background: var(--surface-color);
-    color: var(--text-color);
-}
-
-.speed-step-btn:disabled {
-    opacity: 0.35;
-    cursor: not-allowed;
-}
-
-.speed-label {
-    min-width: 44px;
-    text-align: center;
-    font-size: 0.8rem;
-    font-weight: 600;
-    color: var(--text-secondary);
-    font-variant-numeric: tabular-nums;
-}
-
-.sleep-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    background: none;
-    padding: 6px 14px;
-    border-radius: 8px;
-    font-size: 0.8rem;
-    min-height: 36px;
-    color: var(--text-secondary);
-    font-variant-numeric: tabular-nums;
-}
-
-.sleep-btn:hover {
-    background: var(--surface-color);
-    color: var(--text-color);
-}
-
-.sleep-btn--active {
-    color: var(--text-color);
-    background: var(--surface-color);
-}
-
-.chapter-row {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 4px;
-    flex-wrap: wrap;
-}
-
-.chapter-picker-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    background: none;
-    color: var(--text-secondary);
-    font-size: 0.9rem;
-    min-height: 44px;
-    padding: 8px 12px;
-    border-radius: 8px;
-}
-
-.chapter-picker-btn:hover {
-    background: var(--surface-color);
-}
-
-.chapter-picker-btn--active {
-    color: var(--text-color);
-    background: var(--surface-color);
-}
-
-.book-percent {
-    font-size: 0.8rem;
-    font-weight: 600;
-    color: var(--text-secondary);
-    font-variant-numeric: tabular-nums;
-}
-
-.read-along {
+.np-ticks {
+    flex: 1;
+    height: 8px;
     position: relative;
+    background: repeating-linear-gradient(90deg, var(--rule) 0 2px, transparent 2px 5px);
+}
+
+.np-ticks-fill {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 0;
+    background: repeating-linear-gradient(90deg, var(--accent) 0 2px, transparent 2px 5px);
+}
+
+.np-transport {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.np-skip {
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--ink);
+}
+
+.np-skip--small {
+    width: 48px;
+    height: 48px;
+    color: var(--ink-2);
+}
+
+.np-skip:disabled {
+    opacity: 0.35;
+    cursor: default;
+}
+
+.np-play {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--accent);
+    color: var(--on-accent);
+    box-shadow: 0 10px 30px var(--accent-ring);
+}
+
+.np-play:hover:not(:disabled) {
+    background: var(--accent-hover);
+}
+
+.np-play:disabled {
+    opacity: 0.6;
+    cursor: default;
+}
+
+.np-tiles {
+    margin-top: auto;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: var(--space-2);
+}
+
+.np-tiles--three {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.np-tile {
+    min-height: 64px;
+    padding: 0 var(--space-1);
+    border: 1px solid transparent;
+    border-radius: var(--r-14);
+    background: var(--surface);
+    color: var(--ink);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-1);
+}
+
+.np-tile[hidden] {
+    display: none;
+}
+
+.np-tile-value {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 1.0625rem;
+    font-variant-numeric: tabular-nums;
+}
+
+.np-tile-label {
+    font-size: 0.75rem;
+    color: var(--muted);
+    text-align: center;
+}
+
+.np-tile--on {
+    border-color: var(--accent);
+    background: var(--accent-subtle);
+    color: var(--accent);
+}
+
+.np-tile--on .np-tile-label {
+    color: var(--accent);
+}
+
+/* ---- Sheets (chapters, speed, more) ---- */
+
+.ns-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 950;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    background: var(--scrim-strong);
+    animation: sheet-fade-in var(--duration-base) var(--ease-out);
+}
+
+.ns-sheet {
     width: 100%;
-    max-width: 560px;
-    max-height: 30vh;
+    max-width: 480px;
+    max-height: calc(100dvh - 88px);
+    display: flex;
+    flex-direction: column;
+    background: var(--surface);
+    border-radius: var(--r-24) var(--r-24) 0 0;
+    box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.5);
+    padding-bottom: env(safe-area-inset-bottom, 0);
+    animation: sheet-slide-up var(--duration-base) var(--ease-out);
+}
+
+.cs-sheet {
+    height: calc(100dvh - 88px);
+}
+
+.ns-grab {
+    width: 40px;
+    height: 5px;
+    border-radius: var(--r-pill);
+    background: var(--rule);
+    margin: 10px auto 0;
+    flex-shrink: 0;
+}
+
+.ns-sheet-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--space-2) var(--space-3) 0 var(--space-5);
+    flex-shrink: 0;
+}
+
+.ns-sheet-title {
+    font-size: 1.5rem;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+}
+
+.cs-tabs {
+    margin: var(--space-3) var(--space-5) var(--space-2);
+    padding: var(--space-1);
+    border-radius: var(--r-pill);
+    background: var(--bg);
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-1);
+    flex-shrink: 0;
+}
+
+.cs-tabs button {
+    min-height: 44px;
+    border-radius: var(--r-pill);
+    color: var(--ink-2);
+    font-size: 0.9375rem;
+    font-weight: 700;
+}
+
+.cs-tabs button[aria-selected="true"] {
+    background: var(--ink);
+    color: var(--bg);
+}
+
+.cs-body {
+    flex: 1;
     overflow-y: auto;
-    background: var(--card-color);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius);
-    padding: 12px 16px;
-    margin: 8px 0;
+    padding: var(--space-1) var(--space-3) var(--space-5);
+}
+
+.cs-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.cs-row {
+    width: 100%;
+    min-height: 56px;
+    padding: var(--space-2);
+    border-radius: var(--r-12);
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
     text-align: left;
 }
 
-.read-along p {
-    color: var(--text-secondary);
-    font-size: 0.95rem;
-    line-height: 1.55;
-    padding: 6px 8px;
-    border-radius: var(--radius-sm);
-    cursor: pointer;
-    transition: background-color var(--duration-fast) var(--ease-out);
+.cs-row--current {
+    background: var(--accent-subtle);
 }
 
-.read-along p:hover {
-    background: var(--surface-color);
+.cs-num {
+    width: 32px;
+    flex-shrink: 0;
+    font-size: 0.875rem;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
 }
 
-.read-along p.chunk-current {
-    color: var(--text-color);
-    background: var(--primary-subtle);
-    border-left: 3px solid var(--primary-color);
+.cs-row--current .cs-num,
+.cs-row--current .cs-title {
+    color: var(--accent);
 }
 
+.cs-main {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+}
+
+.cs-title {
+    font-size: 1rem;
+    font-weight: 700;
+    overflow-wrap: anywhere;
+}
+
+.cs-title--done {
+    color: var(--muted);
+}
+
+.cs-row-progress {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+.cs-row-bar {
+    flex: 1;
+    height: 3px;
+    border-radius: var(--r-pill);
+    background: var(--track);
+    overflow: hidden;
+}
+
+.cs-row-fill {
+    display: block;
+    height: 100%;
+    background: var(--accent);
+}
+
+.cs-row-time {
+    font-size: 0.75rem;
+    color: var(--accent);
+    font-variant-numeric: tabular-nums;
+}
+
+.cs-played {
+    color: var(--success);
+    display: inline-flex;
+}
+
+.cs-len {
+    min-width: 44px;
+    text-align: right;
+    font-size: 0.8125rem;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+}
+
+.cs-empty {
+    padding: var(--space-5) var(--space-4);
+    text-align: center;
+    color: var(--muted);
+}
+
+.cs-bookmarks {
+    padding: var(--space-2) var(--space-2) 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+}
+
+.cs-add {
+    min-height: 52px;
+    padding: 0 var(--space-3);
+    border: 1px dashed var(--rule);
+    border-radius: var(--r-14);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+    font-size: 0.9375rem;
+    font-weight: 700;
+    text-align: left;
+}
+
+.cs-bm-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.cs-bm {
+    background: var(--surface-2);
+    border-radius: var(--r-14);
+    padding: var(--space-3);
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+}
+
+.cs-bm-play {
+    width: 44px;
+    height: 44px;
+    flex-shrink: 0;
+    border-radius: 50%;
+    background: var(--ink);
+    color: var(--bg);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.cs-bm-label {
+    flex: 1;
+    min-width: 0;
+    font-size: 1rem;
+    line-height: 1.4;
+    overflow-wrap: anywhere;
+}
+
+.cs-bm-remove {
+    color: var(--muted);
+}
+
+.sp-list {
+    padding: var(--space-3) var(--space-3) var(--space-5);
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--space-2);
+    overflow-y: auto;
+}
+
+.sp-list--menu {
+    grid-template-columns: 1fr;
+}
+
+.sp-option {
+    min-height: 48px;
+    border-radius: var(--r-12);
+    background: var(--surface-2);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+
+.sp-list--menu .sp-option {
+    text-align: left;
+    padding: 0 var(--space-4);
+}
+
+.sp-option--current {
+    background: var(--accent-subtle);
+    color: var(--accent);
+    box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+@media (min-width: 600px) {
+    .ns-backdrop {
+        align-items: center;
+    }
+
+    .ns-sheet,
+    .cs-sheet {
+        height: auto;
+        max-height: 80dvh;
+        border-radius: var(--r-24);
+    }
+
+    .cs-sheet {
+        height: 80dvh;
+    }
+}
+
+/* Chapter sheet classes below are still used by the Library's edit and combine dialogs. */
 @keyframes sheet-fade-in {
     from { opacity: 0; }
     to { opacity: 1; }
@@ -506,74 +721,6 @@
 .chapter-sheet-list button.chapter-current {
     color: var(--primary-color);
     font-weight: 600;
-}
-
-.bookmark-add-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    width: calc(100% - 16px);
-    margin: 0 8px 4px;
-    padding: 12px 16px;
-    border-radius: 8px;
-    color: var(--primary-color);
-    font-size: 0.95rem;
-    font-weight: 600;
-    min-height: 44px;
-}
-
-.bookmark-add-row:hover {
-    background: var(--surface-color);
-}
-
-.bookmark-row {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-}
-
-.bookmark-jump-btn {
-    flex: 1;
-    text-align: left;
-    padding: 14px 16px;
-    border-radius: 8px;
-    color: var(--text-secondary);
-    font-size: 0.95rem;
-    min-height: 44px;
-}
-
-.bookmark-jump-btn:hover {
-    background: var(--surface-color);
-}
-
-.bookmark-delete-btn {
-    color: var(--text-secondary);
-    flex-shrink: 0;
-}
-
-.bookmark-empty {
-    padding: 20px 16px;
-    color: var(--text-secondary);
-    font-size: 0.9rem;
-    text-align: center;
-}
-
-.epub-listen-view .player-container {
-    justify-content: flex-start;
-    padding-top: 16px;
-}
-
-/* When the read-along panel is open, collapse the cover art so the extra
-   panel height doesn't push transport controls below the fold — same trick
-   Spotify's lyrics view uses (cover shrinks, text takes its place). */
-.epub-listen-view.reading-text .player-cover-wrap {
-    margin-bottom: 8px;
-}
-
-.epub-listen-view.reading-text .player-cover {
-    width: 64px;
-    height: 64px;
-    border-radius: 8px;
 }
 
 .back-btn {

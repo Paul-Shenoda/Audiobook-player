@@ -39,7 +39,7 @@ body {
 }
 
 #app:has(+ .mini-player-bar--visible) {
-    padding-bottom: 80px;
+    padding-bottom: calc(88px + env(safe-area-inset-bottom));
 }
 
 .icon-btn-touch {
@@ -99,50 +99,57 @@ body {
     color: var(--danger-ink);
 }
 
+/* Mini player: a floating card on phones, the full-width bottom bar from 1024px */
 .mini-player-bar {
     position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    background: var(--card-color);
-    border-top: 1px solid var(--border-color);
-    padding: 8px 12px calc(8px + env(safe-area-inset-bottom));
-    transform: translateY(100%);
-    transition: transform var(--duration-base) var(--ease-in-out);
+    left: 10px;
+    right: 10px;
+    bottom: calc(10px + env(safe-area-inset-bottom));
+    background: var(--surface-2);
+    border-radius: var(--r-14);
+    box-shadow: var(--shadow);
+    overflow: hidden;
+    transform: translateY(calc(100% + 24px));
+    visibility: hidden;
+    transition: transform var(--duration-base) var(--ease-in-out),
+        visibility 0s linear var(--duration-base);
     z-index: 900;
 }
 
 .mini-player-bar--visible {
     transform: translateY(0);
+    visibility: visible;
+    transition-delay: 0s;
 }
 
 .mini-player-inner {
     display: flex;
     align-items: center;
-    gap: 12px;
-    max-width: 1200px;
-    margin: 0 auto;
+    gap: var(--space-2);
+    padding: 6px;
 }
 
 .mini-player-open {
     flex: 1;
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 10px;
     min-width: 0;
+    min-height: 44px;
     text-align: left;
+    border-radius: var(--r-8);
 }
 
 .mini-cover {
-    width: 48px;
-    height: 48px;
-    border-radius: 6px;
+    width: 44px;
+    height: 44px;
+    border-radius: 7px;
     object-fit: cover;
     flex-shrink: 0;
 }
 
 .mini-cover--ph {
-    background: var(--surface-color);
+    background: var(--cover-teal);
 }
 
 .mini-info {
@@ -150,23 +157,116 @@ body {
 }
 
 .mini-title {
-    font-size: 0.9rem;
-    font-weight: 600;
+    font-size: 0.9375rem;
+    font-weight: 700;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
 
 .mini-sub {
-    font-size: 0.75rem;
-    color: var(--text-secondary);
+    font-size: 0.8125rem;
+    color: var(--muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.mini-controls {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    flex-shrink: 0;
 }
 
 .mini-play-btn {
-    background: var(--primary-color);
-    color: var(--on-primary);
+    background: var(--ink);
+    color: var(--bg);
     border-radius: 50%;
     flex-shrink: 0;
+}
+
+.mini-skip-btn,
+.mini-speed {
+    display: none;
+}
+
+.mini-progress {
+    height: 3px;
+    background: var(--track);
+}
+
+.mini-progress-fill {
+    width: 0;
+    height: 100%;
+    background: var(--accent);
+}
+
+@media (min-width: 1024px) {
+    #app:has(+ .mini-player-bar--visible) {
+        padding-bottom: calc(104px + env(safe-area-inset-bottom));
+    }
+
+    .mini-player-bar {
+        left: var(--space-2);
+        right: var(--space-2);
+        bottom: calc(var(--space-2) + env(safe-area-inset-bottom));
+        background: var(--surface);
+        border-radius: var(--r-16);
+    }
+
+    .mini-player-inner {
+        padding: var(--space-3) var(--space-5);
+        gap: var(--space-5);
+    }
+
+    .mini-player-open {
+        max-width: 420px;
+        gap: 14px;
+    }
+
+    .mini-cover {
+        width: 56px;
+        height: 56px;
+        border-radius: var(--r-8);
+    }
+
+    .mini-controls {
+        flex: 1;
+        justify-content: center;
+        gap: var(--space-3);
+    }
+
+    .mini-skip-btn {
+        display: inline-flex;
+        color: var(--ink);
+    }
+
+    .mini-play-btn {
+        width: 48px;
+        height: 48px;
+        background: var(--accent);
+        color: var(--on-accent);
+    }
+
+    .mini-speed {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 56px;
+        height: 40px;
+        padding: 0 10px;
+        margin-left: var(--space-3);
+        border: 1px solid var(--rule);
+        border-radius: var(--r-pill);
+        font-weight: 700;
+        font-size: 0.875rem;
+        font-variant-numeric: tabular-nums;
+    }
+
+    .mini-progress {
+        height: 4px;
+    }
 }
 
 button {

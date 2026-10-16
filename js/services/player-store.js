@@ -15,7 +15,7 @@
  * @property {number} chapterDuration seconds (estimated for EPUBs)
  * @property {number} bookPercent 0-100
  * @property {{chunks: string[], chunkIndex: number}|null} readAlong EPUB only
- * @property {*} sleep sleep timer info, shape owned by the engines
+ * @property {{mode: 'off'|'15'|'30'|'chapter', endsAt?: number}} sleep endsAt is a Date.now() time for timed modes
  */
 
 /**
@@ -27,6 +27,7 @@
  * @property {() => void} pause
  * @property {(rate: number) => void} setRate
  * @property {(seconds: number) => void} skip negative goes back
+ * @property {(mode: 'off'|'15'|'30'|'chapter') => void} setSleep
  * @property {(index: number) => void} goToChapter
  * @property {(fraction: number) => void} seekInChapter 0-1 within the current chapter
  * @property {() => void} destroy stop playback and release everything
@@ -48,7 +49,7 @@ function initialState() {
     chapterDuration: 0,
     bookPercent: 0,
     readAlong: null,
-    sleep: null,
+    sleep: { mode: 'off' },
   };
 }
 
@@ -157,6 +158,11 @@ export function createPlayerStore({ createEngine } = {}) {
     /** @param {number} fraction */
     seekInChapter(fraction) {
       engine?.seekInChapter(fraction);
+    },
+
+    /** @param {'off'|'15'|'30'|'chapter'} mode */
+    setSleep(mode) {
+      engine?.setSleep(mode);
     },
 
     /** Pause but keep the book loaded. */

@@ -13,30 +13,14 @@ import {
   estimatePercent,
   estimateSecondsRemaining,
 } from '../tts/playback-state.js';
-import { loadTTSSettings } from '../tts/tts-router.js';
+import { loadTTSSettings, sharedTtsRouter } from '../tts/tts-router.js';
+import { createSleepTimer } from '../services/sleep-timer.js';
 import { getBook, updateBook } from '../storage/library-db.js';
-// The one shared router. (Until playback-manager.js is deleted it lives there,
-// so the old mini player keeps controlling the same instance.)
-import { playbackManager } from '../services/playback-manager.js';
 
 /**
  * @typedef {import('../storage/library-db.js').Book} Book
  * @typedef {import('./../services/player-store.js').PlayerEngine} PlayerEngine
  */
-
-/**
- * The sleep timer's "end of chapter" mode. The view owns the timer and flips
- * `atChapterEnd`; the engine reads it when a chapter finishes, stops there and
- * clears it. (Interim until the store has a sleep command.)
- */
-export const sleepControl = { atChapterEnd: false };
-
-/** AI narration cost estimate for these chunks, or null when there is no AI provider. */
-export function estimateNarrationCost(chunks) {
-  const provider = playbackManager.tts.aiProvider;
-  if (!chunks.length || !provider?.estimateCost) return null;
-  return provider.estimateCost(chunks.reduce((sum, c) => sum + c.length, 0));
-}
 
 /**
  * Safari has a long-standing IndexedDB bug where a Blob retrieved from a
@@ -67,7 +51,7 @@ async function readFileBlobArrayBuffer(currentBook) {
  */
 export function createTtsEngine(deps = {}) {
   const {
-    router = playbackManager.tts,
+    router = sharedTtsRouter,
     readBlob = readFileBlobArrayBuffer,
     openEpub: open = openEpub,
     getChapterList: listChapters = getChapterList,
@@ -94,6 +78,15 @@ export function createTtsEngine(deps = {}) {
   let rate = 1;
   /** True from play() until pause, error or the end of the book. */
   let wantPlaying = false;
+  const sleepTimer = createSleepTimer({
+    onExpire: () => {
+      enqueue(() => {
+        wantPlaying = false;
+        router.pause();
+        publish({ status: 'paused', sleep: { mode: 'off' } });
+      });
+    },
+  });
   /** Last queued command; null when idle. Commands run one at a time, in order. */
   let tail = null;
 
@@ -199,21 +192,21 @@ export function createTtsEngine(deps = {}) {
     if (destroyed) return;
     enqueue(async () => {
       const atEnd = chapterIndex >= totalChapters - 1;
-      const sleepAtChapterEnd = sleepControl.atChapterEnd;
+      const sleepAtChapterEnd = sleepTimer.getMode() === 'chapter';
 
       if (atEnd || sleepAtChapterEnd) {
         wantPlaying = false;
         if (atEnd) {
           saveBook(book.id, { finishedAt: Date.now() })?.catch?.(() => {});
-          publish({ status: 'paused' });
+          publish({ status: 'paused', sleep: sleepTimer.set('off') });
           return;
         }
         // Sleep timer: park at the start of the next chapter.
-        sleepControl.atChapterEnd = false;
+        const sleep = sleepTimer.set('off');
         await loadChapter(chapterIndex + 1);
         if (destroyed) return;
         persistProgress();
-        publish({ status: 'paused', sleep: { stopped: 'chapter-end' } });
+        publish({ status: 'paused', sleep });
         return;
       }
 
@@ -302,6 +295,10 @@ export function createTtsEngine(deps = {}) {
       publish();
     },
 
+    setSleep(mode) {
+      emit({ sleep: sleepTimer.set(mode) });
+    },
+
     skip(seconds) {
       enqueue(async () => {
         if (!chunks.length) return;
@@ -333,6 +330,7 @@ export function createTtsEngine(deps = {}) {
     destroy() {
       destroyed = true;
       wantPlaying = false;
+      sleepTimer.destroy();
       router.stop();
       router.onChunkStart = null;
       router.onComplete = null;

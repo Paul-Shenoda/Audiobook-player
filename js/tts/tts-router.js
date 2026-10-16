@@ -351,3 +351,6 @@ export class TTSRouter {
     return this.playing;
   }
 }
+
+/** The one router the player uses, so every view and engine controls the same speech. */
+export const sharedTtsRouter = new TTSRouter();

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { createTtsEngine, sleepControl } from '../js/engines/tts-engine.js';
+import { createTtsEngine } from '../js/engines/tts-engine.js';
 import { TTSRouter } from '../js/tts/tts-router.js';
 import { loadEpubProgress } from '../js/tts/playback-state.js';
 
@@ -100,7 +100,6 @@ async function setup({ book = {}, deps = {}, speech = {} } = {}) {
 
 beforeEach(() => {
   localStorage.clear();
-  sleepControl.atChapterEnd = false;
 });
 
 afterEach(() => {
@@ -341,16 +340,48 @@ describe('chapter roll-over', () => {
 
   it('stops at the end of the chapter when the sleep timer says so', async () => {
     const t = await setup({ book: { progress: { chapterIndex: 1, chunkIndex: 4 } } });
-    sleepControl.atChapterEnd = true;
+    t.engine.setSleep('chapter');
+    expect(t.state.sleep).toEqual({ mode: 'chapter' });
     await t.run(() => t.engine.play());
     const spokenBefore = t.fake.spoken.length;
     t.fake.finish();
     await t.engine.whenIdle();
     expect(t.state.status).toBe('paused');
     expect(t.state.chapterIndex).toBe(2); // parked at the start of the next chapter
-    expect(t.state.sleep).toEqual({ stopped: 'chapter-end' });
+    expect(t.state.sleep).toEqual({ mode: 'off' });
     expect(t.fake.spoken).toHaveLength(spokenBefore);
-    expect(sleepControl.atChapterEnd).toBe(false);
+  });
+
+  it('a timed sleep reports its end time and pauses when it runs out', async () => {
+    vi.useFakeTimers();
+    try {
+      const t = await setup();
+      await t.run(() => t.engine.play());
+      t.engine.setSleep('15');
+      expect(t.state.sleep.mode).toBe('15');
+      expect(t.state.sleep.endsAt).toBeGreaterThan(Date.now());
+      await vi.advanceTimersByTimeAsync(15 * 60_000);
+      await t.engine.whenIdle();
+      expect(t.state.status).toBe('paused');
+      expect(t.state.sleep).toEqual({ mode: 'off' });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('setSleep off cancels a running timer', async () => {
+    vi.useFakeTimers();
+    try {
+      const t = await setup();
+      await t.run(() => t.engine.play());
+      t.engine.setSleep('30');
+      t.engine.setSleep('off');
+      expect(t.state.sleep).toEqual({ mode: 'off' });
+      await vi.advanceTimersByTimeAsync(31 * 60_000);
+      expect(t.state.status).toBe('playing');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

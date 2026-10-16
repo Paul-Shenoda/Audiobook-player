@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { filterBooks, searchBooks, sortBooks, pickContinueBook } from '../js/utils/book-filters.js';
+import { filterBooks, searchBooks, sortBooks, pickContinueBook, bookStatus } from '../js/utils/book-filters.js';
 
 const books = [
   { id: '1', type: 'mp3', title: 'Dune', author: 'Frank Herbert' },
@@ -73,5 +73,14 @@ describe('pickContinueBook', () => {
   it('returns null for an empty library or missing progress', () => {
     expect(pickContinueBook([])).toBeNull();
     expect(pickContinueBook([{ id: 'x', lastOpenedAt: 1 }])).toBeNull();
+  });
+});
+
+describe('bookStatus', () => {
+  it('reports finished, in progress (with percent) and not started', () => {
+    expect(bookStatus({ finishedAt: 5 })).toEqual({ kind: 'finished', percent: 100, label: 'Finished' });
+    expect(bookStatus({ progress: { percent: 42 } })).toEqual({ kind: 'progress', percent: 42, label: '42%' });
+    expect(bookStatus({})).toEqual({ kind: 'new', percent: 0, label: 'Not started' });
+    expect(bookStatus({ progress: { percent: 0, seconds: 30 } }).kind).toBe('progress');
   });
 });
