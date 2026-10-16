@@ -176,10 +176,18 @@ export async function addBook(data) {
  */
 export async function updateBook(id, updates) {
   const db = await getDb();
-  const existing = await db.get(BOOKS_STORE, id);
-  if (!existing) return;
+  // Read and write in ONE readwrite transaction. IndexedDB queues overlapping
+  // readwrite transactions on a store, so each update sees the previous one's
+  // result; separate get/put calls let a progress save overwrite a speed change.
+  const tx = db.transaction(BOOKS_STORE, 'readwrite');
+  const existing = await tx.store.get(id);
+  if (!existing) {
+    await tx.done;
+    return;
+  }
   const updated = { ...normalizeBook(existing), ...updates, id };
-  await db.put(BOOKS_STORE, updated);
+  await tx.store.put(updated);
+  await tx.done;
   return updated;
 }
 
