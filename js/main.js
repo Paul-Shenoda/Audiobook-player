@@ -6,6 +6,8 @@ import { renderEpubListen } from './views/epub-listen.js';
 import { renderSettings } from './views/settings.js';
 import { renderMiniPlayer } from './views/mini-player.js';
 import { playbackManager } from './services/playback-manager.js';
+import { createViewLifecycle } from './services/view-lifecycle.js';
+import { getBook } from './storage/library-db.js';
 
 /** @type {HTMLElement} */
 const app = document.getElementById('app');
@@ -19,8 +21,8 @@ if (!miniPlayerEl) {
   document.body.appendChild(miniPlayerEl);
 }
 
-/** @type {(() => void)|null} */
-let currentCleanup = null;
+// Cleans up views, including a player still playing in the background.
+const lifecycle = createViewLifecycle({ clearPlayback: () => playbackManager.clear() });
 
 playbackManager.onStateChange = () => {
   renderMiniPlayer(miniPlayerEl, { onOpenBook: openBook });
@@ -38,11 +40,14 @@ async function showLibrary() {
 /**
  * @param {import('./storage/library-db.js').Book} book
  */
-function openBook(book) {
-  if (book.type === 'mp3') {
-    showMp3Player(book);
+async function openBook(book) {
+  // Re-read from the database: the mini player holds the object from when the
+  // book was first opened, so its speed and position would be stale.
+  const fresh = (await getBook(book.id).catch(() => null)) ?? book;
+  if (fresh.type === 'mp3') {
+    showMp3Player(fresh);
   } else {
-    showEpubListen(book);
+    showEpubListen(fresh);
   }
 }
 
@@ -56,7 +61,7 @@ function showMp3Player(book) {
     onBack: showLibrary,
     keepPlaybackOnBack: true,
   });
-  currentCleanup = view.cleanup;
+  lifecycle.show(view.cleanup);
   renderMiniPlayer(miniPlayerEl, { onOpenBook: openBook });
 }
 
@@ -71,7 +76,7 @@ async function showEpubListen(book) {
     onOpenSettings: showSettings,
     keepPlaybackOnBack: true,
   });
-  currentCleanup = view.cleanup;
+  lifecycle.show(view.cleanup);
   renderMiniPlayer(miniPlayerEl, { onOpenBook: openBook });
 }
 
@@ -85,14 +90,7 @@ async function showSettings() {
  * @param {{ keepPlayback?: boolean }} options
  */
 function runCleanup(options = {}) {
-  const { keepPlayback = false } = options;
-  if (currentCleanup) {
-    currentCleanup({ keepPlayback });
-    currentCleanup = null;
-  }
-  if (!keepPlayback) {
-    playbackManager.clear();
-  }
+  lifecycle.leave(options);
   renderMiniPlayer(miniPlayerEl, { onOpenBook: openBook });
 }
 

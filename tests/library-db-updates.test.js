@@ -18,11 +18,18 @@ describe('updateBook', () => {
     expect(saved.progress.seconds).toBe(42);
   });
 
-  it('applies rapid successive updates in order (last one wins)', async () => {
+  it('keeps three overlapping updates to different fields', async () => {
     const book = await addBook({ type: 'mp3', title: 'T2', author: 'A', tracks: [] });
 
-    await Promise.all([1.5, 1.75, 2, 1.75, 1.5, 1.25].map((rate) => updateBook(book.id, { playbackRate: rate })));
+    await Promise.all([
+      updateBook(book.id, { playbackRate: 1.5 }),
+      updateBook(book.id, { bookmarks: [{ seconds: 5, label: 'mark' }] }),
+      updateBook(book.id, { finishedAt: 123 }),
+    ]);
 
-    expect((await getBook(book.id)).playbackRate).toBe(1.25);
+    const saved = await getBook(book.id);
+    expect(saved.playbackRate).toBe(1.5);
+    expect(saved.bookmarks).toHaveLength(1);
+    expect(saved.finishedAt).toBe(123);
   });
 });

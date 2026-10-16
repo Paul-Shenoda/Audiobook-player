@@ -1,4 +1,4 @@
-import { clampSpeed, stepSpeed } from '../utils/playback-speed.js';
+import { clampSpeed, stepSpeed, EPUB_MAX_SPEED } from '../utils/playback-speed.js';
 import {
   openEpub,
   loadChapterText,
@@ -159,18 +159,18 @@ export async function renderEpubListen(container, book, { onBack, onOpenSettings
   }
 
   // Nearest offered step, so the display is always one of the labelled values.
-  let currentRate = clampSpeed(settings.rate);
+  let currentRate = clampSpeed(settings.rate, EPUB_MAX_SPEED);
 
   const speedLabel = container.querySelector('#speed-label');
   function updateSpeedDisplay() {
     speedLabel.textContent = `${currentRate}×`;
-    container.querySelector('#speed-down-btn').disabled = currentRate === stepSpeed(currentRate, -1);
-    container.querySelector('#speed-up-btn').disabled = currentRate === stepSpeed(currentRate, +1);
+    container.querySelector('#speed-down-btn').disabled = currentRate === stepSpeed(currentRate, -1, EPUB_MAX_SPEED);
+    container.querySelector('#speed-up-btn').disabled = currentRate === stepSpeed(currentRate, +1, EPUB_MAX_SPEED);
   }
   updateSpeedDisplay();
 
   function changeSpeed(direction) {
-    currentRate = stepSpeed(currentRate, direction);
+    currentRate = stepSpeed(currentRate, direction, EPUB_MAX_SPEED);
     ttsRouter.setRate(currentRate);
     updateSpeedDisplay();
     updateProgressDisplay(currentChunkIndex);

@@ -180,7 +180,6 @@ export function renderMp3Player(container, book, { onBack, keepPlaybackOnBack = 
   });
 
   container.querySelector('#back-btn').addEventListener('click', () => {
-    saveProgress();
     cleanup({ keepPlayback: keepPlaybackOnBack });
     onBack();
   });
@@ -368,8 +367,14 @@ export function renderMp3Player(container, book, { onBack, keepPlaybackOnBack = 
     player.defaultPlaybackRate = currentRate;
     player.playbackRate = currentRate;
     showSpeed();
-    updateBook(book.id, { playbackRate: currentRate });
+    updateBook(book.id, { playbackRate: currentRate }).catch((err) => console.warn('Could not save speed', err));
   }
+  // iOS Safari can reset playbackRate once metadata loads or playback starts.
+  const reapplySpeed = () => {
+    if (player.playbackRate !== currentRate) player.playbackRate = currentRate;
+  };
+  player.addEventListener('loadedmetadata', reapplySpeed);
+  player.addEventListener('play', reapplySpeed);
   speedDownBtn.addEventListener('click', () => changeSpeed(-1));
   speedUpBtn.addEventListener('click', () => changeSpeed(+1));
   showSpeed();
@@ -503,13 +508,20 @@ export function renderMp3Player(container, book, { onBack, keepPlaybackOnBack = 
     updateBook(book.id, { finishedAt: Date.now() });
   });
 
+  // Nothing is saved until the book has actually played in this session, so
+  // opening and closing it doesn't store the 10 s restore rewind.
+  let hasPlayed = false;
+  player.addEventListener('play', () => {
+    hasPlayed = true;
+  });
+
   function saveProgress() {
-    if (!player.duration) return;
+    if (!player.duration || !hasPlayed) return;
     const percent = estimatePercent(trackIndex, totalTracks, player.currentTime, player.duration);
     updateBook(book.id, {
       lastOpenedAt: Date.now(),
       progress: { trackIndex, seconds: player.currentTime, percent },
-    });
+    }).catch((err) => console.warn('Could not save progress', err));
   }
 
   // Save every few seconds while playing, and immediately on pause, seek, or

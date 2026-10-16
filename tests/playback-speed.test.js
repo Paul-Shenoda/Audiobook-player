@@ -28,4 +28,11 @@ describe('playback speed steps', () => {
   it('steps from an off-grid rate via its nearest step', () => {
     expect(stepSpeed(1.1, +1)).toBe(1.25);
   });
+
+  it('respects a lower maximum (EPUB / Web Speech stops at 2x)', () => {
+    expect(stepSpeed(2, +1, 2)).toBe(2);
+    expect(stepSpeed(1.75, +1, 2)).toBe(2);
+    expect(clampSpeed(3, 2)).toBe(2);
+    expect(clampSpeed(1.5, 2)).toBe(1.5);
+  });
 });
