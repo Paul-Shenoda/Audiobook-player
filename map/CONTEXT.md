@@ -10,28 +10,20 @@ re-read the whole tree "just in case."
 - **live** — everything in this map is live (in force, cite/implement
   against it). This is a small, actively-maintained codebase with no
   parallel legacy path.
-- **leftover** — none. The one place an old shape used to linger — the
-  pre-chain `TTSSettings` format (`providerId`/`apiKey`/`proxyUrl` directly,
-  no chain) — is fully migrated away by `migrateSettings()` on first load;
-  see [objects/tts-settings.md](objects/tts-settings.md). It's read-once
-  compatibility code, not a second live format.
+- **leftover** — none. `loadTTSSettings()` ignores any fields saved by older
+  versions (other voice providers, API keys), so there is no second format.
 - **ghost** — none. Nothing here is named/stubbed without being wired.
 
 ## Name collisions / product vs. code language
 
 - **"Listen"** (the button, the mode) = EPUB text-to-speech playback, driven
-  by `TTSRouter` in `js/tts/tts-router.js`. Completely separate code path
-  from MP3 playback (`js/views/mp3-player.js`), which is a native `<audio>`
-  element and never touches `js/tts/` at all.
-- **"Provider"** always means a `TTSProvider` (the pluggable narrator
-  contract, `js/tts/provider-interface.js`) — never a cloud/hosting
-  provider, never GitHub.
-- **"Chain"** means `TTSSettings.providerChain` — the user's ordered
-  fallback list of enabled BYOK narrators (fixed relative priority:
-  ElevenLabs → OpenAI → Google, Web Speech always the implicit final
-  fallback). Not a blockchain, not related to `chunk-cache.js`'s cache keys.
+  by the one `TTSRouter` narrator in `js/tts/tts-router.js` (Web Speech device
+  voice only, experimental), run by `js/engines/tts-engine.js`. A separate
+  engine from audio playback (`js/engines/audio-engine.js`), which is a native
+  `<audio>` element and never touches `js/tts/`. Both engines feed the one
+  `playerStore` and the one Now playing screen (`js/views/now-playing.js`).
 - **"Chunk"** means a ~2000-character text segment (`js/epub/text-extract.js`
-  `chunkText`) — the atomic unit of both TTS synthesis and the "skip
+  `chunkText`) — the atomic unit of both speech and the "skip
   back/forward" buttons on the Listen screen. Not a network/HTTP chunk.
 - **Two progress records exist for the same book, on purpose**: `Book.progress`
   (coarse, IndexedDB, survives across devices/reinstalls conceptually) vs.

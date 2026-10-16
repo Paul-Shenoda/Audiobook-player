@@ -1,86 +1,59 @@
-# Personal Audiobook Library
+# Audiobook Player
 
-A client-side web app for personal use: play local audiobooks (MP3/M4B/M4A/MP4), import EPUB ebooks, and listen via built-in or AI text-to-speech. Inspired by Audible's library layout — no accounts, no cloud, all data stays in your browser.
+A personal audiobook player that runs in the browser. Add MP3, M4B, M4A or MP4 audiobook files (for example free downloads from [LibriVox](https://librivox.org)) and listen on your phone or computer. There are no accounts and no server: everything is stored in your browser.
 
 ## Features
 
-- **Library home** — grid of covers, "Continue Listening" row, search and sort, format badges
-- **Audio playback** — MP3/M4B/M4A/MP4 with tag metadata, play/pause, seek, ±15s skip, sleep timer, progress saved to IndexedDB
-- **EPUB listen mode** — extracts text from spine chapters, reads aloud via Web Speech or OpenAI TTS, chapter picker with real TOC titles, continuous chapter playback, sleep timer (incl. end-of-chapter)
-- **AI narrator (optional)** — OpenAI TTS with local dev proxy, IndexedDB audio chunk cache, and next-chunk prefetch for gapless playback
-- **Lock-screen controls** — Media Session metadata with cover art, play/pause/skip from the lock screen
-- **Offline PWA** — service worker precaches the app shell; the app opens and plays your library with no connection
-- **Persistent library** — books stored in IndexedDB (files + covers + progress), with persistent-storage protection requested on import
+- **Library with shelves** — a grid of covers, a "Continue listening" entry, search and sort, and shelves you create to group books.
+- **One Now playing screen** — the same player for every book: play/pause, seek, 15-second skip, speed, and a progress bar for the whole book.
+- **Chapters and bookmarks** — chapter list (from multi-file books or embedded chapter markers when the file has them) and bookmarks you add while listening.
+- **Per-book speed** — each book remembers its own playback speed.
+- **Sleep timer** — stop after a set time or at the end of the chapter.
+- **Lock-screen controls** — title, cover and play/pause/skip on the lock screen and in notification controls (Media Session).
+- **Offline PWA** — a service worker caches the app, so it opens and plays your library without a connection. It can be added to the home screen.
+- **Your files stay on your device** — books, covers and progress live in IndexedDB. The app asks the browser to protect that storage from automatic cleanup.
+- **Experimental: EPUB read-aloud** — the app can read an EPUB aloud with your device's built-in voice (Web Speech), with a read-along view. That voice stops when you lock your phone or leave the app, so it is an extra, not the main use.
 
-## Tech Stack
+## Tip: free audiobooks
 
-- HTML5, CSS3, vanilla ES modules
-- [Vite](https://vitejs.dev/) — dev server and bundler
-- [jsmediatags](https://github.com/aadsm/jsmediatags) — MP3 ID3 tags
-- [epub.js](https://github.com/futurepress/epub.js) — EPUB parsing
-- [idb](https://github.com/jakearchibald/idb) — IndexedDB wrapper
-- Vitest + ESLint
+LibriVox has public-domain audiobooks read by volunteers. Download a book's MP3 or M4B files, then tap **Add books**. Select all the files of one book together; they are combined into a single book.
 
-## Getting Started
+## Run it
 
-Node.js is required. If you use **WSL**, run these commands from your Linux shell:
+Requires Node.js. Under WSL, run these from the Linux shell.
 
 ```bash
-source ~/.nvm/nvm.sh   # if using nvm
-cd ~/Projects/Audiobook-player
 npm install
-npm run dev
+npm run dev      # http://localhost:5173/Audiobook-player/
 ```
 
-Open the URL shown in the terminal (usually `http://localhost:5173`).
-
-### Optional: OpenAI TTS
-
-1. Copy `.env.example` to `.env` and set `OPENAI_API_KEY=sk-...`
-2. In the app, open **Settings** → select **OpenAI TTS** → enter your API key (or rely on the server proxy key)
-3. The dev server proxies `/api/tts` to OpenAI so keys are not exposed in production builds
-
-For production, run your own backend proxy — do not embed API keys in the frontend bundle.
-
-## Scripts
-
-| Command | Description |
-|---------|-------------|
-| `npm run dev` | Start Vite dev server |
+| Command | What it does |
+|---|---|
+| `npm run dev` | Vite dev server |
 | `npm run build` | Production build to `dist/` |
-| `npm run preview` | Preview production build |
+| `npm run preview` | Serve the production build locally |
 | `npm run lint` | ESLint on `js/` |
-| `npm run test` | Run Vitest unit tests |
+| `npm test` | Vitest unit tests |
 
-## How to Use
+## Deploy
 
-### iPhone (Safari)
+Every push to `master` runs `.github/workflows/deploy.yml`, which builds the site and publishes `dist/` to GitHub Pages. The app is served under `/Audiobook-player/` (set as `base` in `vite.config.js`).
 
-1. Open the app URL on your iPhone (same Wi‑Fi as your dev machine, or a deployed host).
-2. Tap **Share** → **Add to Home Screen** for an app-like experience.
-3. Open the app → tap **Add Books**.
-4. In the Files picker: **Browse** → **On My iPhone** (or iCloud Drive).
-5. Select **one or many** `.epub` files (long-press to multi-select).
-6. Books appear in your library grid — tap any cover to listen.
+## On iPhone
 
-Re-importing the same file is skipped automatically (matched by filename and size).
+1. Open the app's address in Safari and tap **Share**, then **Add to Home Screen**.
+2. Tap **Add books** and choose your audio files from Files (long-press to select several).
+3. Re-adding a file that is already in the library is skipped.
 
-### Desktop
+Safari may clear a site's storage when the device is very low on space, so keep your original files.
 
-1. Click **Add Books** and select `.mp3`, `.m4b`, `.m4a`, `.mp4`, or `.epub` files (multiple allowed).
-2. Audio files open the audio player; EPUB opens listen mode.
-3. For EPUB: tap **Listen** to start Web Speech narration.
-4. Use **Settings** to switch to OpenAI TTS for higher-quality voices.
-5. Use the **···** menu on a book card to remove it from the library.
+## How it is built
 
-### Mini player
+Plain JavaScript ES modules with JSDoc comments, no framework, bundled by [Vite](https://vitejs.dev/). Libraries: [idb](https://github.com/jakearchibald/idb) (IndexedDB), [music-metadata](https://github.com/Borewit/music-metadata) and [jsmediatags](https://github.com/aadsm/jsmediatags) (tags, chapters, cover art), [epub.js](https://github.com/futurepress/epub.js) (EPUB), [vite-plugin-pwa](https://vite-pwa-org.netlify.app/) (service worker). Tests use Vitest and fake-indexeddb.
 
-When listening, tap **Library** to browse while audio continues. A bar at the bottom shows the current book with play/pause.
+- **Player store** (`js/services/player-store.js`) holds the one playback state. Views read it and send it commands.
+- **Engines** (`js/engines/`) do the playing behind the store: `audio-engine.js` drives an `<audio>` element for audio files; `tts-engine.js` reads an EPUB with the built-in voice (`js/tts/`: a small narrator object over the Web Speech API).
+- **IndexedDB** (`js/storage/library-db.js`) has two stores: `books` (metadata, covers, progress, bookmarks) and `files` (the audio or EPUB data, kept apart so book records stay small and are never rewritten with the file).
+- **Views** (`js/views/`) are the library, Now playing, chapters sheet, mini player, shelf sheets, welcome screen and settings.
 
-## Storage Notes
-
-Books and generated TTS audio are stored in IndexedDB. Browser storage limits apply (typically hundreds of MB). **On iPhone Safari**, storage may be cleared if the device is low on space — keep important originals in the Files app. DRM-protected EPUBs are not supported.
-
-## Test EPUBs
-
-Use DRM-free books from [Standard Ebooks](https://standardebooks.org/) or Project Gutenberg.
+More detail for working on the code: [CLAUDE.md](CLAUDE.md) and [map/](map/CLAUDE.md).

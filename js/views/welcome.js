@@ -65,8 +65,8 @@ export function openWelcome({ opener = document.activeElement } = {}) {
       </section>
 
       <section class="welcome-section">
-        <h3>EPUB books</h3>
-        <p>The app can read an EPUB aloud with your device's built-in voice (Safari's text-to-speech). That voice stops when you lock your phone or leave the app. Natural AI narration is a work in progress, coming later.</p>
+        <h3>Experimental: EPUB read-aloud</h3>
+        <p>The app can read an EPUB aloud with your device's built-in voice. That voice stops when you lock your phone or leave the app.</p>
       </section>
 
       <section class="welcome-section">

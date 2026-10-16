@@ -30,9 +30,8 @@ review.
 
 1. Trigger: push to `master`. `.github/workflows/deploy.yml:4-5`
 2. `npm ci` (exact lockfile install) then `npm run build` (Vite production
-   build — see `vite.config.js` for the `worker.format: 'es'` and
-   `workbox.globIgnores` settings the Kokoro provider specifically needs to
-   build correctly). `:28-30`
+   build — see `vite.config.js` for the base path and service-worker
+   settings). `:28-30`
 3. `actions/upload-pages-artifact` uploads `dist/`, `actions/deploy-pages`
    publishes it. `:32-34, 43-44`
 

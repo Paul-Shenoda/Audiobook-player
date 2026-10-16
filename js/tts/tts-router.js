@@ -1,68 +1,33 @@
 import { WebSpeechTTS } from './web-speech.js';
-import { cacheKey, getCachedAudio, setCachedAudio } from './chunk-cache.js';
-import { getProviderFactory, TTSQuotaExceededError } from './provider-interface.js';
-// Side-effect imports: each provider registers its own metadata/factory.
-import './openai-tts.js';
-import './elevenlabs-tts.js';
-import './google-tts.js';
-import './kokoro-tts.js';
 
 const SETTINGS_KEY = 'tts-settings';
 
 /**
  * @typedef {Object} TTSSettings
- * @property {number} rate
- * @property {string[]} providerChain ordered ids of enabled BYOK/local
- *   providers to try, in priority order. Web Speech is always the implicit
- *   final fallback and is never itself a member of this list.
- * @property {Object<string, Object>} providerConfigs per-provider config
- *   (credentials, voiceId, etc.), keyed by provider id — shape is
- *   provider-specific, see each provider's configFields.
- * @property {string} webSpeechVoiceId
+ * @property {number} rate default speed for a book that has no speed of its own
+ * @property {string} webSpeechVoiceId voiceURI of the chosen built-in voice ('' = device default)
  */
-
-/** @returns {TTSSettings} */
-export function loadTTSSettings() {
-  try {
-    const raw = localStorage.getItem(SETTINGS_KEY);
-    if (raw) return migrateSettings({ ...defaultSettings(), ...JSON.parse(raw) });
-  } catch {
-    // ignore
-  }
-  return defaultSettings();
-}
 
 /** @returns {TTSSettings} */
 export function defaultSettings() {
-  return {
-    rate: 1,
-    providerChain: [],
-    providerConfigs: {},
-    webSpeechVoiceId: '',
-  };
+  return { rate: 1, webSpeechVoiceId: '' };
 }
 
 /**
- * Upgrades the old single-provider settings shape ({providerId, voiceId,
- * apiKey, proxyUrl}) to the new provider-chain shape, once, transparently,
- * so settings saved before this feature existed still work.
- * @param {Object} settings
+ * Reads the saved settings. Only the two known fields are kept, so anything
+ * an older version saved (other voice providers, keys) is ignored.
  * @returns {TTSSettings}
  */
-function migrateSettings(settings) {
-  if (settings.providerId === undefined) return settings;
-
-  const { providerId, voiceId, apiKey, proxyUrl, ...rest } = settings;
-  const migrated = { ...defaultSettings(), ...rest };
-
-  if (providerId === 'web-speech') {
-    migrated.webSpeechVoiceId = voiceId ?? '';
-  } else if (providerId) {
-    migrated.providerChain = [providerId];
-    migrated.providerConfigs = { [providerId]: { apiKey, proxyUrl, voiceId } };
+export function loadTTSSettings() {
+  const settings = defaultSettings();
+  try {
+    const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? 'null');
+    if (typeof saved?.rate === 'number') settings.rate = saved.rate;
+    if (typeof saved?.webSpeechVoiceId === 'string') settings.webSpeechVoiceId = saved.webSpeechVoiceId;
+  } catch {
+    // ignore: fall back to defaults
   }
-
-  return migrated;
+  return settings;
 }
 
 /**
@@ -73,263 +38,80 @@ export function saveTTSSettings(settings) {
 }
 
 /**
- * Orchestrates TTS playback across a chain of providers with chunk caching.
- * On a quota-exceeded error from the active provider, silently advances to
- * the next configured provider and retries the same chunk; any other error
- * falls back to Web Speech, same as before this feature existed.
+ * The one narrator: EPUB text read aloud with the device's built-in voice
+ * (Web Speech). It owns the saved settings (speed, voice) and forwards
+ * events from the speech wrapper, which keeps the position by word.
  */
 export class TTSRouter {
   constructor() {
     this.webSpeech = new WebSpeechTTS();
-    /** @type {import('./provider-interface.js').TTSProvider[]} */
-    this.providerChain = [];
-    this.chainIndex = 0;
-    /** @type {import('./provider-interface.js').TTSProvider|null} */
-    this.aiProvider = null;
     this.settings = loadTTSSettings();
-    /** @type {string[]} */
-    this.chunks = [];
-    this.chunkIndex = 0;
-    /** @type {HTMLAudioElement|null} */
-    this.audio = null;
-    /** Chunk index the current audio element belongs to. */
-    this.audioChunk = undefined;
     this.playing = false;
-    this.paused = false;
-    this.bookId = '';
-    this.chapterIndex = 0;
-    /** @type {Map<string, Promise<Blob>>} in-flight synth requests by cache key */
-    this.inflightSynth = new Map();
     /** @type {((index: number, charIndex: number) => void)|null} */
     this.onChunkStart = null;
-    /** @type {((index: number, charIndex: number) => void)|null} Web Speech word boundary */
+    /** @type {((index: number, charIndex: number) => void)|null} word boundary */
     this.onProgress = null;
     /** @type {(() => void)|null} */
     this.onComplete = null;
     /** @type {((error: Error) => void)|null} */
     this.onError = null;
-    /** @type {((providerName: string) => void)|null} fires when the chain silently advances past a quota-exhausted provider */
-    this.onProviderFallback = null;
   }
 
   /**
-   * Apply settings to this router. Does not persist — call saveTTSSettings
+   * Apply settings to this narrator. Does not persist: call saveTTSSettings
    * explicitly when the user commits a change.
    * @param {TTSSettings} settings
    */
   configure(settings) {
     this.settings = settings;
-    this.providerChain = (settings.providerChain ?? [])
-      .map((id) => {
-        const factory = getProviderFactory(id);
-        if (!factory) return null;
-        const config = { ...(settings.providerConfigs?.[id] ?? {}), rate: settings.rate };
-        return factory(config);
-      })
-      .filter(Boolean);
-    this.chainIndex = 0;
-    this.aiProvider = this.providerChain[0] ?? null;
   }
 
   /**
    * @param {string[]} chunks
    * @param {number} startIndex
-   * @param {{ bookId?: string, chapterIndex?: number, startChar?: number }} context  startChar only applies to Web Speech
+   * @param {{ startChar?: number }} [context] startChar: offset inside the first chunk
    */
-  async speak(chunks, startIndex = 0, context = {}) {
+  speak(chunks, startIndex = 0, context = {}) {
     this.stop(false);
-    this.chunks = chunks;
-    this.chunkIndex = startIndex;
-    this.bookId = context.bookId ?? '';
-    this.chapterIndex = context.chapterIndex ?? 0;
     this.playing = true;
-    this.paused = false;
-
-    if (this.aiProvider) {
-      await this.playAIChunk();
-    } else {
-      this.playWebSpeech(startIndex, context.startChar ?? 0);
-    }
-  }
-
-  /**
-   * Fall back to Web Speech when the whole provider chain has failed.
-   * @param {number} startIndex
-   */
-  fallbackToWebSpeech(startIndex) {
-    this.providerChain = [];
-    this.aiProvider = null;
-    if (this.audio) {
-      this.audio.pause();
-      URL.revokeObjectURL(this.audio.src);
-      this.audio = null;
-    }
-    this.playing = true;
-    this.paused = false;
-    this.playWebSpeech(startIndex);
-  }
-
-  playWebSpeech(startIndex, startChar = 0) {
-    if (this.settings.webSpeechVoiceId) {
-      this.webSpeech.setVoice(this.settings.webSpeechVoiceId);
-    }
-    this.webSpeech.setRate(this.settings.rate);
-    this.webSpeech.onChunkStart = (index, charIndex) => this.onChunkStart?.(index, charIndex);
-    this.webSpeech.onProgress = (index, charIndex) => this.onProgress?.(index, charIndex);
-    this.webSpeech.onComplete = () => {
+    const speech = this.webSpeech;
+    if (this.settings.webSpeechVoiceId) speech.setVoice(this.settings.webSpeechVoiceId);
+    speech.setRate(this.settings.rate);
+    speech.onChunkStart = (index, charIndex) => this.onChunkStart?.(index, charIndex);
+    speech.onProgress = (index, charIndex) => this.onProgress?.(index, charIndex);
+    speech.onComplete = () => {
       this.playing = false;
       this.onComplete?.();
     };
-    this.webSpeech.onError = (err) => {
+    speech.onError = (err) => {
       this.playing = false;
       this.onError?.(err);
     };
-    this.webSpeech.speak(this.chunks, startIndex, startChar);
-  }
-
-  /**
-   * Get chunk audio from cache, an in-flight request, or a fresh synthesis.
-   * Audio is always synthesized at 1x — playback speed is applied via
-   * audio.playbackRate — so cached chunks stay valid across speed changes.
-   * @param {number} index
-   * @returns {Promise<Blob>}
-   */
-  async getChunkAudio(index) {
-    const providerId = this.aiProvider.id;
-    const voiceId = this.settings.providerConfigs?.[providerId]?.voiceId || '';
-    const key = cacheKey(this.bookId, this.chapterIndex, index, voiceId, providerId);
-
-    const cached = await getCachedAudio(key);
-    if (cached) return cached;
-
-    const inflight = this.inflightSynth.get(key);
-    if (inflight) return inflight;
-
-    const request = (async () => {
-      const blob = await this.aiProvider.synthesize(this.chunks[index], voiceId, {
-        rate: this.settings.rate,
-      });
-      await setCachedAudio(key, blob, this.bookId);
-      return blob;
-    })().finally(() => {
-      this.inflightSynth.delete(key);
-    });
-    this.inflightSynth.set(key, request);
-    return request;
-  }
-
-  /**
-   * Warm the cache for the next chunk while the current one plays,
-   * so chunk transitions are gapless. Best-effort.
-   * @param {number} index
-   */
-  prefetchChunk(index) {
-    if (!this.aiProvider || index >= this.chunks.length) return;
-    this.getChunkAudio(index).catch(() => {});
-  }
-
-  async playAIChunk() {
-    if (this.chunkIndex >= this.chunks.length) {
-      this.playing = false;
-      this.onComplete?.();
-      return;
-    }
-
-    this.onChunkStart?.(this.chunkIndex);
-
-    try {
-      const blob = await this.getChunkAudio(this.chunkIndex);
-
-      if (this.audio) {
-        this.audio.pause();
-        URL.revokeObjectURL(this.audio.src);
-      }
-
-      this.audio = new Audio(URL.createObjectURL(blob));
-      this.audioChunk = this.chunkIndex;
-      this.audio.playbackRate = this.settings.rate;
-
-      this.audio.onended = () => {
-        if (this.paused) return;
-        this.chunkIndex += 1;
-        this.playAIChunk();
-      };
-
-      this.audio.onerror = () => {
-        this.playing = false;
-        this.onError?.(new Error('Audio playback failed'));
-      };
-
-      this.prefetchChunk(this.chunkIndex + 1);
-      await this.audio.play();
-    } catch (err) {
-      if (err instanceof TTSQuotaExceededError && this.chainIndex < this.providerChain.length - 1) {
-        this.chainIndex += 1;
-        this.aiProvider = this.providerChain[this.chainIndex];
-        this.onProviderFallback?.(this.aiProvider.name);
-        await this.playAIChunk();
-        return;
-      }
-
-      this.playing = false;
-      if (this.aiProvider) {
-        this.onError?.(
-          new Error(
-            `${err instanceof Error ? err.message : String(err)} — falling back to Web Speech`,
-          ),
-        );
-        this.fallbackToWebSpeech(this.chunkIndex);
-      }
-    }
+    speech.speak(chunks, startIndex, context.startChar ?? 0);
   }
 
   pause() {
-    this.paused = true;
-    if (this.aiProvider) {
-      this.audio?.pause();
-    } else {
-      this.webSpeech.pause();
-    }
+    this.webSpeech.pause();
   }
 
   resume() {
-    this.paused = false;
-    if (this.aiProvider) {
-      this.audio?.play().catch(() => {});
-    } else {
-      this.webSpeech.resume();
-    }
+    this.webSpeech.resume();
   }
 
   stop(clearQueue = true) {
     this.webSpeech.stop(clearQueue);
-    if (this.audio) {
-      this.audio.pause();
-      URL.revokeObjectURL(this.audio.src);
-      this.audio = null;
-    }
     this.playing = false;
-    this.paused = false;
-    if (clearQueue) {
-      this.chunks = [];
-      this.chunkIndex = 0;
-    }
   }
 
-  /**
-   * @returns {Promise<import('./provider-interface.js').TTSVoice[]>}
-   */
-  async listVoices() {
-    if (this.aiProvider) {
-      return this.aiProvider.listVoices();
-    }
+  /** @returns {{ id: string, name: string }[]} */
+  listVoices() {
     return this.webSpeech.listVoices();
   }
 
   /**
-   * Update playback rate immediately, even while speaking.
-   * EPUB listen mode passes { saveAsDefault: false }: its speed is saved per
-   * book, so changing it must not change the default every other book uses.
+   * Update speed immediately, even while speaking (it continues from the
+   * current word). EPUB listen mode passes { saveAsDefault: false }: its speed
+   * is saved per book, so it must not change the default other books use.
    * @param {number} rate
    * @param {{ saveAsDefault?: boolean }} [options]
    */
@@ -337,33 +119,14 @@ export class TTSRouter {
     this.settings = { ...this.settings, rate };
     if (saveAsDefault) saveTTSSettings(this.settings);
     this.webSpeech.setRate(rate);
-    if (this.audio) {
-      this.audio.playbackRate = rate;
-    }
   }
 
   getCurrentChunkIndex() {
-    if (this.aiProvider) {
-      return this.chunkIndex;
-    }
     return this.webSpeech.getCurrentChunkIndex();
   }
 
-  /**
-   * How far into the current chunk's audio the AI voice is (0-1), or null when
-   * there is no audio with a known length.
-   * @returns {number|null}
-   */
-  getAudioFraction() {
-    const a = this.audio;
-    // The old chunk's audio lingers until the next one is fetched; its position is not ours.
-    if (!this.aiProvider || !a || !(a.duration > 0)) return null;
-    if (this.audioChunk !== undefined && this.audioChunk !== this.chunkIndex) return null;
-    return Math.min(Math.max(a.currentTime / a.duration, 0), 1);
-  }
-
   isPaused() {
-    return this.paused;
+    return this.webSpeech.isPaused();
   }
 
   isPlaying() {
@@ -371,5 +134,5 @@ export class TTSRouter {
   }
 }
 
-/** The one router the player uses, so every view and engine controls the same speech. */
+/** The one narrator the player uses, so every view and engine controls the same speech. */
 export const sharedTtsRouter = new TTSRouter();

@@ -1,6 +1,6 @@
 ---
 type: process
-status: verified — 2026-08-25, commit 9cd694a
+status: updated — 2026-10-16 (files store)
 consumes: [File[]]
 produces: [Book]
 ---
@@ -20,7 +20,9 @@ A `File[]` from `<input type="file" multiple>` (`js/views/library.js`) goes
 into `importBooks(files, onProgress)`; each file is deduped against existing
 books (per-track for mp3 books, flat fields for epub) by filename+size,
 classified as mp3 or epub, cover art extracted where available, and written
-as a new `Book` via `addBook()`. For M4B/M4A files, chapter markers are
+as a new `Book` via `addBook()`, which moves the Blobs (audio, EPUB, cover)
+into the `files` store ([../objects/book-files.md](../objects/book-files.md)) and keeps only
+references on the record. For M4B/M4A files, chapter markers are
 also read best-effort and attached to the single track if present.
 
 ## Why this shape
@@ -42,25 +44,26 @@ fine as a single track.
 ## Steps
 
 1. `isDuplicate(existing, file)` checks filename+size against already-stored
-   books, walking `b.tracks` per-track for mp3 books. `js/services/import-service.js:26-34`
+   books, walking `b.tracks` per-track for mp3 books. `js/services/import-service.js:26-35`
 2. `isAudioFile(file)` classifies mp3/m4b/m4a vs. epub by extension/MIME.
-   `js/services/import-service.js:67`
+   `js/services/import-service.js:68`
 3. `importSingleFile(file, existing)` extracts ID3 cover art
-   (`pictureToBlob`, `:76`) for audio files, builds the `Book` shape.
+   (`pictureToBlob`, `:77`) for audio files, builds the `Book` shape
+   (`importAudio` `:177`, `importEpub` `:245` pass Blobs to `addBook`).
    `js/services/import-service.js:42`
 4. `readM4bChapters(file)` attempts in-file chapter markers for M4B/M4A
    files only, returning `[]` on any failure or fewer than 2 chapters
-   found — never throws. `js/services/import-service.js:155-170`
+   found — never throws. `js/services/import-service.js:156-170`
 5. `importBooks(files, onProgress)` loops all files, calling `addBook()`
-   (`js/storage/library-db.js:160`) per new book, reporting progress back
-   to the library view's import-status banner. `js/services/import-service.js:89`
+   (`js/storage/library-db.js:273`) per new book, reporting progress back
+   to the library view's import-status banner. `js/services/import-service.js:90-123`
 
 ## If you change this
 
 - **Hits:** `js/views/library.js` (the only caller, renders the progress
   banner and refreshes the grid after), `js/storage/library-db.js`
   (`addBook`), `music-metadata` (chapter parsing dependency).
-- **Does not hit:** `TTSSettings`/provider registry, `PlaybackManager` — a
+- **Does not hit:** `TTSSettings`, `PlayerStore` — a
   freshly-imported book is not opened or played automatically.
 
 ## Surfaces
@@ -72,6 +75,7 @@ fine as a single track.
 
 ## See
 
-- Objects: [../objects/book.md](../objects/book.md)
+- Objects: [../objects/book.md](../objects/book.md),
+  [../objects/book-files.md](../objects/book-files.md)
 - Processes: [combine-audiobook.md](combine-audiobook.md)
 - Source: `js/services/import-service.js`

@@ -2,9 +2,9 @@
 
 | Noun | Cluster | Status | Card |
 |---|---|---|---|
-| Book | library | verified | [book.md](book.md) |
-| TTSProvider | tts | verified | [tts-provider.md](tts-provider.md) |
+| Book | library | updated | [book.md](book.md) |
+| Files store | library | updated | [book-files.md](book-files.md) |
+| Shelf | library | updated | [shelves.md](shelves.md) |
 | TTSSettings | tts | verified | [tts-settings.md](tts-settings.md) |
-| ChunkCache | tts | verified | [chunk-cache.md](chunk-cache.md) |
 | EpubProgress | tts | verified | [epub-progress.md](epub-progress.md) |
-| PlaybackManager | playback | verified | [playback-manager.md](playback-manager.md) |
+| PlayerStore | playback | updated | [player-store.md](player-store.md) |

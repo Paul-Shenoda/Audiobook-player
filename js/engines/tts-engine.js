@@ -45,7 +45,7 @@ async function readFileBlobArrayBuffer(currentBook) {
 }
 
 /**
- * EPUB playback: text chunks read aloud through the TTS router.
+ * EPUB playback: text chunks read aloud with the device's built-in voice.
  * Every dependency can be injected so tests need no real EPUB or speech.
  * @param {Object} [deps]
  * @returns {PlayerEngine & { whenIdle: () => Promise<void> }}
@@ -127,10 +127,7 @@ export function createTtsEngine(deps = {}) {
     const len = chunks[chunkIndex]?.length ?? 0;
     let pos = knownChar;
     if (ticker) {
-      const fraction = router.getAudioFraction?.();
-      pos = fraction != null
-        ? fraction * len
-        : knownChar + estimateCharsForSeconds((Date.now() - anchorTime) / 1000, rate);
+      pos = knownChar + estimateCharsForSeconds((Date.now() - anchorTime) / 1000, rate);
     }
     return Math.min(Math.max(pos, 0), len);
   }
@@ -152,9 +149,7 @@ export function createTtsEngine(deps = {}) {
     ticker = setInterval(() => emit({ chapterElapsed: elapsedSeconds() }), 1000);
   }
 
-  /** Stop ticking; an AI voice's position is kept as the place to continue from. */
   function stopTicker() {
-    if (ticker && router.getAudioFraction?.() != null) knownChar = currentChar();
     if (ticker) clearInterval(ticker);
     ticker = null;
   }
@@ -210,9 +205,8 @@ export function createTtsEngine(deps = {}) {
       return;
     }
     chunkIndex = index;
-    // Only Web Speech can start mid-chunk; AI voices play the chunk's audio from its start.
-    setKnownChar(router.aiProvider ? 0 : startChar);
-    await router.speak(chunks, index, { bookId: book.id, chapterIndex, startChar: knownChar });
+    setKnownChar(startChar);
+    router.speak(chunks, index, { startChar: knownChar });
   }
 
   /** Move to a position in the chapter that is already loaded. */
@@ -343,9 +337,7 @@ export function createTtsEngine(deps = {}) {
         if (wantPlaying || !book || !chunks.length) return;
         wantPlaying = true;
         if (router.isPaused()) {
-          router.resume();
-          // Web Speech reports 'playing' from onChunkStart; the audio element has no such event.
-          if (router.aiProvider) publish({ status: 'playing' });
+          router.resume(); // reports 'playing' again from onChunkStart
         } else {
           await speakFrom(chunkIndex, knownChar);
         }
@@ -367,8 +359,8 @@ export function createTtsEngine(deps = {}) {
       // Speech re-starts from the last known word, so count time from here at the new speed.
       setKnownChar(knownChar);
       rate = next;
-      // The router re-speaks the current chunk at the new rate (Web Speech) or
-      // sets audio.playbackRate (AI providers). It never writes the saved default.
+      // The narrator re-speaks the current chunk from the last word at the new
+      // rate. It never writes the saved default.
       router.setRate(rate, { saveAsDefault: false });
       saveBook(book.id, { playbackRate: rate })?.catch?.(err => console.warn('Could not save speed', err));
       publish();

@@ -69,7 +69,7 @@ function makeDeps(overrides = {}) {
     chunkText: text => text.split('|'),
     destroyEpub: vi.fn(),
     updateBook: vi.fn(async () => {}),
-    loadSettings: () => ({ rate: 1, providerChain: [], providerConfigs: {}, webSpeechVoiceId: '' }),
+    loadSettings: () => ({ rate: 1, webSpeechVoiceId: '' }),
     ...overrides,
   };
 }
@@ -245,7 +245,7 @@ describe('pause and resume', () => {
 describe('per-book speed', () => {
   it('a new EPUB does not inherit the previous book speed or an old saved default', async () => {
     // An older build wrote the EPUB speed into the global default.
-    const staleDefault = () => ({ rate: 1.5, providerChain: [], providerConfigs: {}, webSpeechVoiceId: '' });
+    const staleDefault = () => ({ rate: 1.5, webSpeechVoiceId: '' });
     const router = new TTSRouter();
     const first = await setup({ book: { id: 'one', playbackRate: 1 }, deps: { router, loadSettings: staleDefault } });
     await first.run(() => first.engine.setRate(1.75));
@@ -519,21 +519,6 @@ describe('chapter elapsed time', () => {
       const n = t.states.length;
       await vi.advanceTimersByTimeAsync(5000);
       expect(t.states).toHaveLength(n);
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it('uses the audio position for AI voices', async () => {
-    vi.useFakeTimers();
-    try {
-      const router = new TTSRouter();
-      const t = await setup({ deps: { router } });
-      await t.run(() => t.engine.play());
-      router.aiProvider = { id: 'fake' }; // pretend an AI voice is active
-      router.audio = { duration: 10, currentTime: 5 };
-      await vi.advanceTimersByTimeAsync(1000);
-      expect(t.state.chapterElapsed).toBeCloseTo(10, 1); // half of a 20 s chunk
     } finally {
       vi.useRealTimers();
     }

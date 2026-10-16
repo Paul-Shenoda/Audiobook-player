@@ -9,7 +9,6 @@ import { SPEED_STEPS, EPUB_MAX_SPEED } from '../utils/playback-speed.js';
 import { renderCoverMarkup, getBookCoverUrl, ensureCoverUrl } from '../utils/cover-art.js';
 import { unlockMediaForAutoplay } from '../utils/audio-unlock.js';
 import { showToast } from '../utils/toast.js';
-import { sharedTtsRouter } from '../tts/tts-router.js';
 
 /**
  * @typedef {import('../storage/library-db.js').Book} Book
@@ -87,7 +86,7 @@ export function renderNowPlaying(container, book, { onClose, onOpenSettings, sto
       <div class="np-stage">
         <div class="np-cover" id="np-cover">${renderCoverMarkup(book, 'np-cover-img')}</div>
         <div class="np-readalong" id="np-readalong" hidden>
-          <p class="np-readalong-hint">Read along, following the narrator</p>
+          <p class="np-readalong-hint">Read along as it speaks</p>
           <div class="np-readalong-text" id="np-readalong-text"></div>
         </div>
       </div>
@@ -160,8 +159,7 @@ export function renderNowPlaying(container, book, { onClose, onOpenSettings, sto
   // ---- Drawing the store's state ----
 
   function narratorLine() {
-    // The built-in voice is only named when no AI provider is narrating.
-    return isEpub && !sharedTtsRouter.aiProvider && book.author
+    return isEpub && book.author
       ? `${book.author}, read by on-device voice`
       : book.author || '';
   }

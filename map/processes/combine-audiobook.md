@@ -54,7 +54,7 @@ dedicated library, and up/down buttons cover the same need).
 - **Hits:** `js/views/library.js` (the only caller), `js/services/import-service.js`
   (`importCombinedAudiobook`, `naturalSortFiles`), `js/storage/library-db.js`
   (`addBook`) — the resulting `Book.tracks` shape is exactly what
-  [play-mp3](play-mp3.md)'s track-chapter model expects.
+  [play-audio](play-audio.md)'s track-chapter model expects.
 - **Does not hit:** `isDuplicate`'s per-track dedup check in `importBooks` —
   combined files are not run back through the default import path, so a
   file already used in a combined book could be selected again there
@@ -70,5 +70,5 @@ dedicated library, and up/down buttons cover the same need).
 ## See
 
 - Objects: [../objects/book.md](../objects/book.md)
-- Processes: [import-books.md](import-books.md), [play-mp3.md](play-mp3.md)
+- Processes: [import-books.md](import-books.md), [play-audio.md](play-audio.md)
 - Source: `js/services/import-service.js`, `js/views/library.js`

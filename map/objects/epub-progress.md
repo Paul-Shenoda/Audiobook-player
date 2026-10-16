@@ -2,7 +2,7 @@
 type: object
 cluster: tts
 universe: live
-status: verified — 2026-08-25, commit 3248c21
+status: updated — 2026-10-16 (player-store + engines restructure)
 entity: js/tts/playback-state.js
 ---
 
@@ -24,22 +24,24 @@ it but read far less frequently.
 ## Shape
 
 - `loadEpubProgress(bookId)` / `saveEpubProgress(bookId, progress)` /
-  `clearEpubProgress(bookId)` — `{chapterIndex, chunkIndex, charIndex}`
+  `clearEpubProgress(bookId)` — `{chapterIndex, chunkIndex, charIndex?}`
+  (`charIndex` is the word position inside the chunk; absent in older saves,
+  which resume from the chunk start)
 - `estimatePercent(chapterIndex, totalChapters, chunkIndex, totalChunks)` —
   the book-wide percent shown next to the chapter selector
-- `estimateSecondsRemaining(chunks, chunkIndex, rate)` — the "X min left in
-  chapter" estimate (character-count heuristic — Web Speech has no true
-  audio duration to measure against)
+- `estimateSecondsRemaining`, `estimateSecondsForChars`,
+  `estimateCharsForSeconds` — the chapter duration/elapsed estimates
+  (character-count heuristic — Web Speech has no true audio duration)
 
-Citations: `js/tts/playback-state.js:14,27,34,45,65`
+Citations: `js/tts/playback-state.js:14,27,34,45,65,79,89`
 
 ## Connected to
 
 - **owns:** nothing
 - **owned-by:** `localStorage['epub-progress:<bookId>']`
-- **joins:** `Book.progress` (written together from
-  `js/views/epub-listen.js`'s `persistProgress()`, but never read from each
-  other — see [../CONTEXT.md](../CONTEXT.md) name collisions)
+- **joins:** `Book.progress` (written together from the TTS engine's
+  `persistProgress()`, `js/engines/tts-engine.js:176-184`; on load the engine
+  prefers `EpubProgress` and falls back to `Book.progress`, `:326` — see [../CONTEXT.md](../CONTEXT.md) name collisions)
 - **looks-like-but-is-not:** `Book.progress` — same book, same moment
   in time, deliberately two homes for two different granularities. Do not
   collapse these into one record; the library grid and the reading engine
@@ -47,16 +49,17 @@ Citations: `js/tts/playback-state.js:14,27,34,45,65`
 
 ## If you change this
 
-- **Hits:** `js/views/epub-listen.js` (`updateProgressDisplay`,
-  `persistProgress`, chunk skip/seek logic all depend on this shape).
-- **Does not hit:** `js/views/mp3-player.js` (MP3 playback has its own
-  simpler `Book.progress.seconds` field and never touches this file).
+- **Hits:** `js/engines/tts-engine.js` (`load`, `persistProgress`, chunk
+  skip/seek and resume depend on this shape); `js/engines/audio-engine.js`
+  imports only `estimatePercent` from this file.
+- **Does not hit:** audio resume (`Book.progress.{trackIndex,seconds}`
+  written by `js/engines/audio-engine.js`; never reads `EpubProgress`).
 
 ## Surfaces
 
 | Surface | Role |
 |---|---|
-| `js/views/epub-listen.js` | reads (resume), writes (every chunk start) |
+| `js/engines/tts-engine.js` | reads (resume), writes (chunk start, word progress) |
 
 ## See
 

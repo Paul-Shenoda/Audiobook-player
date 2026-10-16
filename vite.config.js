@@ -1,83 +1,15 @@
-import { defineConfig, loadEnv } from 'vite';
+import { defineConfig } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-function ttsProxyPlugin() {
-  return {
-    name: 'tts-proxy',
-    configureServer(server) {
-      server.middlewares.use('/api/tts', async (req, res) => {
-        if (req.method !== 'POST') {
-          res.statusCode = 405;
-          res.end('Method not allowed');
-          return;
-        }
-
-        const env = loadEnv(server.config.mode, server.config.root, '');
-        const chunks = [];
-        for await (const chunk of req) {
-          chunks.push(chunk);
-        }
-        const body = JSON.parse(Buffer.concat(chunks).toString());
-
-        const apiKey =
-          req.headers.authorization?.replace(/^Bearer\s+/i, '') ||
-          env.OPENAI_API_KEY;
-
-        if (!apiKey) {
-          res.statusCode = 401;
-          res.end('Missing OpenAI API key');
-          return;
-        }
-
-        try {
-          const response = await fetch('https://api.openai.com/v1/audio/speech', {
-            method: 'POST',
-            headers: {
-              Authorization: `Bearer ${apiKey}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              model: 'tts-1',
-              input: body.text,
-              voice: body.voice || 'nova',
-              speed: body.speed ?? 1,
-            }),
-          });
-
-          if (!response.ok) {
-            const detail = await response.text();
-            res.statusCode = response.status;
-            res.end(detail);
-            return;
-          }
-
-          const audioBuffer = Buffer.from(await response.arrayBuffer());
-          res.setHeader('Content-Type', 'audio/mpeg');
-          res.end(audioBuffer);
-        } catch (err) {
-          res.statusCode = 500;
-          res.end(err instanceof Error ? err.message : 'TTS proxy error');
-        }
-      });
-    },
-  };
-}
-
 export default defineConfig({
   root: '.',
   base: '/Audiobook-player/',
   build: {
     outDir: 'dist',
-  },
-  worker: {
-    // Default worker output is IIFE, which can't properly resolve/bundle a
-    // real npm dependency (kokoro-js) imported inside a Worker — ES format
-    // gives workers the same module resolution as the rest of the app.
-    format: 'es',
   },
   resolve: {
     alias: {
@@ -91,7 +23,6 @@ export default defineConfig({
     include: ['epubjs', 'jsmediatags', 'idb'],
   },
   plugins: [
-    ttsProxyPlugin(),
     VitePWA({
       // Keep the hand-written public/manifest.json instead of generating one.
       manifest: false,
@@ -99,16 +30,6 @@ export default defineConfig({
       includeAssets: ['manifest.json', 'icons/icon.svg'],
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2}'],
-        // The Kokoro worker chunk bundles the kokoro-js library itself
-        // (~2MB) — it must never be precached into every PWA install; it's
-        // only fetched lazily if/when a user explicitly opts into
-        // downloading the offline voice. The Kokoro model/runtime files
-        // themselves are `.onnx`/`.wasm`/`.bin`, already outside
-        // globPatterns' extension list above, so only this worker chunk
-        // needs excluding here.
-        globIgnores: ['**/kokoro-worker-*.js'],
-        // Never intercept the TTS proxy or other API calls.
-        navigateFallbackDenylist: [/^\/api\//],
         // Night Shelf fonts (Google Fonts): CSS revalidates, font files are immutable.
         runtimeCaching: [
           {

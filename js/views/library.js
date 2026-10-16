@@ -5,7 +5,6 @@ import {
 } from '../storage/library-db.js';
 import { importBooks, importCombinedAudiobook, naturalSortFiles } from '../services/import-service.js';
 import { requestPersistentStorage } from '../utils/storage-persist.js';
-import { clearBookCache } from '../tts/chunk-cache.js';
 import { showToast } from '../utils/toast.js';
 import { isIOS } from '../utils/platform.js';
 import { filterBooks, filterByShelf, emptyKind, searchBooks, sortBooks, pickContinueBook, bookStatus } from '../utils/book-filters.js';
@@ -268,7 +267,6 @@ export async function renderLibrary(container, { onOpenBook, onOpenSettings }) {
         const id = btn.getAttribute('data-delete-id');
         if (!id) return;
         if (!confirm('Remove this book from your library?')) return;
-        await clearBookCache(id);
         revokeCoverUrl(id);
         await deleteBook(id);
         showToast('Book removed', 'info');

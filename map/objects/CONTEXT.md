@@ -8,9 +8,10 @@ it, or has to reason about its shape.
 
 Six cards, clustered by how a developer would ask about them:
 
-- **library** — [book.md](book.md)
-- **tts** — [tts-provider.md](tts-provider.md), [tts-settings.md](tts-settings.md),
-  [chunk-cache.md](chunk-cache.md), [epub-progress.md](epub-progress.md)
-- **playback** — [playback-manager.md](playback-manager.md)
+- **library** — [book.md](book.md), [book-files.md](book-files.md),
+  [shelves.md](shelves.md)
+- **tts** — [tts-settings.md](tts-settings.md),
+  [epub-progress.md](epub-progress.md)
+- **playback** — [player-store.md](player-store.md)
 
 Start at [_index.md](_index.md) for the one-line-each list.
