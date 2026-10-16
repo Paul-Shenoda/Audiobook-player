@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { filterBooks, searchBooks, sortBooks } from '../js/utils/book-filters.js';
+import { filterBooks, searchBooks, sortBooks, pickContinueBook } from '../js/utils/book-filters.js';
 
 const books = [
   { id: '1', type: 'mp3', title: 'Dune', author: 'Frank Herbert' },
@@ -37,5 +37,41 @@ describe('sortBooks', () => {
 
   it('keeps original order for recent', () => {
     expect(sortBooks(books, 'recent').map((b) => b.id)).toEqual(['1', '2', '3']);
+  });
+});
+
+describe('pickContinueBook', () => {
+  const book = (id, extra) => ({ id, title: id, lastOpenedAt: 0, finishedAt: null, progress: {}, ...extra });
+
+  it('skips books that were imported but never started', () => {
+    // Regression: import sets lastOpenedAt, so a just-imported EPUB at 0% was shown.
+    const books = [
+      book('imported', { lastOpenedAt: 300, type: 'epub', progress: {} }),
+      book('listened', { lastOpenedAt: 200, type: 'mp3', progress: { trackIndex: 0, seconds: 42, percent: 12 } }),
+    ];
+    expect(pickContinueBook(books)?.id).toBe('listened');
+  });
+
+  it('picks the most recently opened started book', () => {
+    const books = [
+      book('older', { lastOpenedAt: 100, progress: { trackIndex: 0, seconds: 10 } }),
+      book('newer', { lastOpenedAt: 500, progress: { chapterIndex: 2, chunkIndex: 0 } }),
+    ];
+    expect(pickContinueBook(books)?.id).toBe('newer');
+  });
+
+  it('counts a later track or chapter at second 0 as started', () => {
+    expect(pickContinueBook([book('a', { progress: { trackIndex: 3, seconds: 0 } })])?.id).toBe('a');
+    expect(pickContinueBook([book('b', { progress: { chapterIndex: 0, chunkIndex: 5 } })])?.id).toBe('b');
+  });
+
+  it('skips finished books', () => {
+    const books = [book('done', { lastOpenedAt: 900, finishedAt: 950, progress: { seconds: 99, percent: 100 } })];
+    expect(pickContinueBook(books)).toBeNull();
+  });
+
+  it('returns null for an empty library or missing progress', () => {
+    expect(pickContinueBook([])).toBeNull();
+    expect(pickContinueBook([{ id: 'x', lastOpenedAt: 1 }])).toBeNull();
   });
 });

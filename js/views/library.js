@@ -8,7 +8,7 @@ import { requestPersistentStorage } from '../utils/storage-persist.js';
 import { clearBookCache } from '../tts/chunk-cache.js';
 import { showToast } from '../utils/toast.js';
 import { isIOS } from '../utils/platform.js';
-import { filterBooks, searchBooks, sortBooks } from '../utils/book-filters.js';
+import { filterBooks, searchBooks, sortBooks, pickContinueBook } from '../utils/book-filters.js';
 import { icon } from '../utils/icons.js';
 import {
   renderCoverMarkup,
@@ -39,7 +39,7 @@ let sortBy = /** @type {any} */ (localStorage.getItem(SORT_KEY)) || 'recent';
  */
 export async function renderLibrary(container, { onOpenBook, onOpenSettings }) {
   const books = await getAllBooks();
-  const continueBook = books.find((b) => !b.finishedAt) ?? null;
+  const continueBook = pickContinueBook(books);
   const recentBooks = [...books]
     .sort((a, b) => b.addedAt - a.addedAt)
     .slice(0, 8);

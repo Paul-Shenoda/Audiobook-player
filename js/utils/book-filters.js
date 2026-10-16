@@ -44,3 +44,25 @@ export function sortBooks(books, sort) {
   // 'recent': getAllBooks already returns lastOpenedAt desc
   return copy;
 }
+
+/**
+ * Whether a book has actually been listened to. Importing sets lastOpenedAt,
+ * so recency alone would put never-opened books in "Continue Listening".
+ * @param {object} book
+ */
+function hasStarted(book) {
+  const p = book.progress ?? {};
+  return (p.seconds ?? 0) > 0 || (p.trackIndex ?? 0) > 0 || (p.chapterIndex ?? 0) > 0
+    || (p.chunkIndex ?? 0) > 0 || (p.percent ?? 0) > 0;
+}
+
+/**
+ * The book for the "Continue Listening" row: the most recently opened book
+ * that is started and not finished, or null.
+ * @param {object[]} books
+ */
+export function pickContinueBook(books) {
+  return books
+    .filter((b) => !b.finishedAt && hasStarted(b))
+    .reduce((best, b) => (!best || (b.lastOpenedAt ?? 0) > (best.lastOpenedAt ?? 0) ? b : best), null);
+}
