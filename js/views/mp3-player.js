@@ -5,6 +5,7 @@ import { updateBook } from '../storage/library-db.js';
 import { estimatePercent } from '../tts/playback-state.js';
 import { playbackManager } from '../services/playback-manager.js';
 import { createProgressSaver } from '../services/progress-saver.js';
+import { clampSpeed, stepSpeed } from '../utils/playback-speed.js';
 import {
   initMediaSession,
   setMediaPlaybackState,
@@ -76,6 +77,12 @@ export function renderMp3Player(container, book, { onBack, keepPlaybackOnBack = 
           <button class="skip-btn icon-btn-touch" id="forward-btn" type="button" aria-label="Forward 15 seconds">${icon('forward15', 30)}</button>
         </div>
         <div class="secondary-controls">
+          <div class="speed-control">
+            <button class="speed-step-btn icon-btn-touch" id="speed-down-btn" type="button" aria-label="Decrease speed">−</button>
+            <span class="speed-label" id="speed-label" aria-live="polite"></span>
+            <button class="speed-step-btn icon-btn-touch" id="speed-up-btn" type="button" aria-label="Increase speed">+</button>
+          </div>
+          <span class="secondary-controls-divider" aria-hidden="true"></span>
           <button class="sleep-btn" id="sleep-btn" type="button" aria-label="Sleep timer">${icon('moon', 18)}<span id="sleep-label">Sleep: Off</span></button>
           <button class="sleep-btn" id="bookmarks-btn" type="button" aria-label="Bookmarks">${icon('bookmark', 18)}<span>Bookmarks</span></button>
         </div>
@@ -97,6 +104,8 @@ export function renderMp3Player(container, book, { onBack, keepPlaybackOnBack = 
   let trackIndex = Math.min(Math.max(book.progress?.trackIndex ?? 0, 0), totalTracks - 1);
   let resumeSeconds = trackIndex === (book.progress?.trackIndex ?? 0) ? book.progress?.seconds ?? 0 : 0;
   let bookmarks = book.bookmarks ?? [];
+  // Playback speed, remembered per book.
+  let currentRate = clampSpeed(book.playbackRate);
 
   function currentTrack() {
     return tracks[trackIndex];
@@ -144,7 +153,11 @@ export function renderMp3Player(container, book, { onBack, keepPlaybackOnBack = 
   function loadTrack(index, { seconds = 0, autoplay = false } = {}) {
     trackIndex = Math.min(Math.max(index, 0), totalTracks - 1);
     const track = currentTrack();
+    // Browsers reset playbackRate to defaultPlaybackRate whenever the source
+    // changes, so set both: the speed then survives moving to the next file.
+    player.defaultPlaybackRate = currentRate;
     player.src = createManagedObjectUrl(track.fileBlob);
+    player.playbackRate = currentRate;
     player.currentTime = seconds;
     updateChapterLabel();
     if (autoplay) {
@@ -341,6 +354,25 @@ export function renderMp3Player(container, book, { onBack, keepPlaybackOnBack = 
   }
 
   container.querySelector('#bookmarks-btn').addEventListener('click', openBookmarksSheet);
+
+  const speedLabel = container.querySelector('#speed-label');
+  const speedDownBtn = container.querySelector('#speed-down-btn');
+  const speedUpBtn = container.querySelector('#speed-up-btn');
+  function showSpeed() {
+    speedLabel.textContent = `${currentRate}×`;
+    speedDownBtn.disabled = currentRate === stepSpeed(currentRate, -1);
+    speedUpBtn.disabled = currentRate === stepSpeed(currentRate, +1);
+  }
+  function changeSpeed(direction) {
+    currentRate = stepSpeed(currentRate, direction);
+    player.defaultPlaybackRate = currentRate;
+    player.playbackRate = currentRate;
+    showSpeed();
+    updateBook(book.id, { playbackRate: currentRate });
+  }
+  speedDownBtn.addEventListener('click', () => changeSpeed(-1));
+  speedUpBtn.addEventListener('click', () => changeSpeed(+1));
+  showSpeed();
 
   function addBookmarkHere() {
     const track = currentTrack();

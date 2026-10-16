@@ -1,3 +1,4 @@
+import { clampSpeed, stepSpeed } from '../utils/playback-speed.js';
 import {
   openEpub,
   loadChapterText,
@@ -106,7 +107,6 @@ export async function renderEpubListen(container, book, { onBack, onOpenSettings
   let chapterList = [];
   let bookmarks = book.bookmarks ?? [];
 
-  const SPEED_STEPS = [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
   const settings = loadTTSSettings();
   ttsRouter.configure(settings);
 
@@ -158,39 +158,25 @@ export async function renderEpubListen(container, book, { onBack, onOpenSettings
     }
   }
 
-  let currentRate = settings.rate ?? 1.0;
-  // Clamp to nearest step so the display is always one of the labelled values.
-  currentRate = SPEED_STEPS.reduce((prev, s) =>
-    Math.abs(s - currentRate) < Math.abs(prev - currentRate) ? s : prev,
-  );
+  // Nearest offered step, so the display is always one of the labelled values.
+  let currentRate = clampSpeed(settings.rate);
 
   const speedLabel = container.querySelector('#speed-label');
   function updateSpeedDisplay() {
     speedLabel.textContent = `${currentRate}×`;
-    container.querySelector('#speed-down-btn').disabled = currentRate <= SPEED_STEPS[0];
-    container.querySelector('#speed-up-btn').disabled = currentRate >= SPEED_STEPS[SPEED_STEPS.length - 1];
+    container.querySelector('#speed-down-btn').disabled = currentRate === stepSpeed(currentRate, -1);
+    container.querySelector('#speed-up-btn').disabled = currentRate === stepSpeed(currentRate, +1);
   }
   updateSpeedDisplay();
 
-  container.querySelector('#speed-down-btn').addEventListener('click', () => {
-    const idx = SPEED_STEPS.indexOf(currentRate);
-    if (idx > 0) {
-      currentRate = SPEED_STEPS[idx - 1];
-      ttsRouter.setRate(currentRate);
-      updateSpeedDisplay();
-      updateProgressDisplay(currentChunkIndex);
-    }
-  });
-
-  container.querySelector('#speed-up-btn').addEventListener('click', () => {
-    const idx = SPEED_STEPS.indexOf(currentRate);
-    if (idx < SPEED_STEPS.length - 1) {
-      currentRate = SPEED_STEPS[idx + 1];
-      ttsRouter.setRate(currentRate);
-      updateSpeedDisplay();
-      updateProgressDisplay(currentChunkIndex);
-    }
-  });
+  function changeSpeed(direction) {
+    currentRate = stepSpeed(currentRate, direction);
+    ttsRouter.setRate(currentRate);
+    updateSpeedDisplay();
+    updateProgressDisplay(currentChunkIndex);
+  }
+  container.querySelector('#speed-down-btn').addEventListener('click', () => changeSpeed(-1));
+  container.querySelector('#speed-up-btn').addEventListener('click', () => changeSpeed(+1));
 
   try {
     const arrayBuffer = await readFileBlobArrayBuffer(book);
