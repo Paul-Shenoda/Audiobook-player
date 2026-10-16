@@ -53,13 +53,14 @@ export async function importSingleFile(file, existing) {
   }
 
   if (!isAudioFile(file)) {
-    throw new Error('Unsupported file type — use MP3, M4B, M4A, or EPUB');
+    throw new Error('Unsupported file type — use MP3, M4B, M4A, MP4, or EPUB');
   }
 
   return importAudio(file);
 }
 
-const AUDIO_EXT_RE = /\.(mp3|m4b|m4a|aac|wav|ogg|opus|flac)$/i;
+// .mp4 included: audiobook rips often use it, and browsers report them as video/mp4.
+const AUDIO_EXT_RE = /\.(mp3|m4b|m4a|mp4|aac|wav|ogg|opus|flac)$/i;
 
 /**
  * @param {File} file
@@ -140,7 +141,7 @@ function readAudioTags(file) {
   });
 }
 
-const M4B_EXT_RE = /\.(m4b|m4a)$/i;
+const M4B_EXT_RE = /\.(m4b|m4a|mp4)$/i;
 
 /**
  * Best-effort in-file chapter markers for an M4B/M4A — most audiobook

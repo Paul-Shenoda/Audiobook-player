@@ -51,10 +51,10 @@ export async function renderLibrary(container, { onOpenBook, onOpenSettings }) {
         <div class="header-actions">
           <button class="icon-btn-touch" id="settings-btn" type="button" aria-label="Settings">${icon('settings')}</button>
           <button class="icon-btn-touch" id="combine-btn" type="button" aria-label="Combine chapter files into one audiobook">${icon('layers')}</button>
-          <input type="file" id="combine-input" accept=".mp3,.m4b,.m4a,audio/mpeg,audio/mp4,audio/x-m4a,audio/x-m4b" multiple class="visually-hidden">
+          <input type="file" id="combine-input" accept=".mp3,.m4b,.m4a,.mp4,audio/mpeg,audio/mp4,audio/x-m4a,audio/x-m4b,video/mp4" multiple class="visually-hidden">
           <label class="import-btn primary-btn">
             ${icon('add', 20)} Add Books
-            <input type="file" id="import-input" accept=".mp3,.m4b,.m4a,audio/mpeg,audio/mp4,audio/x-m4a,audio/x-m4b,.epub,application/epub+zip" multiple class="visually-hidden">
+            <input type="file" id="import-input" accept=".mp3,.m4b,.m4a,.mp4,audio/mpeg,audio/mp4,audio/x-m4a,audio/x-m4b,video/mp4,.epub,application/epub+zip" multiple class="visually-hidden">
           </label>
         </div>
       </header>

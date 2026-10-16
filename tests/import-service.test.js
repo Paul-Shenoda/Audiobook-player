@@ -68,6 +68,11 @@ describe('audio file detection', () => {
     expect(isAudioFile({ name: 'book.m4a', type: '' })).toBe(true);
   });
 
+  it('accepts .mp4 audiobooks, which browsers often report as video/mp4', () => {
+    expect(isAudioFile({ name: 'book.mp4', type: 'video/mp4' })).toBe(true);
+    expect(isAudioFile({ name: 'BOOK.MP4', type: '' })).toBe(true);
+  });
+
   it('accepts unknown extension when MIME type is audio', () => {
     expect(isAudioFile({ name: 'download', type: 'audio/mp4' })).toBe(true);
   });
@@ -99,6 +104,14 @@ describe('readM4bChapters', () => {
       { title: 'Chapter One', startSeconds: 0 },
       { title: 'Chapter Two', startSeconds: 90 },
     ]);
+  });
+
+  it('reads chapters from .mp4 files too (same container as M4B)', async () => {
+    parseBlobMock.mockResolvedValue({
+      format: { chapters: [{ title: 'One', start: 0, timeScale: 1 }, { title: 'Two', start: 60, timeScale: 1 }] },
+    });
+    const chapters = await readM4bChapters({ name: 'book.mp4' });
+    expect(chapters.map((c) => c.startSeconds)).toEqual([0, 60]);
   });
 
   it('falls back to raw start when timeScale is absent', async () => {

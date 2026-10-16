@@ -1,11 +1,11 @@
 # Personal Audiobook Library
 
-A client-side web app for personal use: play local audiobooks (MP3/M4B/M4A), import EPUB ebooks, and listen via built-in or AI text-to-speech. Inspired by Audible's library layout — no accounts, no cloud, all data stays in your browser.
+A client-side web app for personal use: play local audiobooks (MP3/M4B/M4A/MP4), import EPUB ebooks, and listen via built-in or AI text-to-speech. Inspired by Audible's library layout — no accounts, no cloud, all data stays in your browser.
 
 ## Features
 
 - **Library home** — grid of covers, "Continue Listening" row, search and sort, format badges
-- **Audio playback** — MP3/M4B/M4A with tag metadata, play/pause, seek, ±15s skip, sleep timer, progress saved to IndexedDB
+- **Audio playback** — MP3/M4B/M4A/MP4 with tag metadata, play/pause, seek, ±15s skip, sleep timer, progress saved to IndexedDB
 - **EPUB listen mode** — extracts text from spine chapters, reads aloud via Web Speech or OpenAI TTS, chapter picker with real TOC titles, continuous chapter playback, sleep timer (incl. end-of-chapter)
 - **AI narrator (optional)** — OpenAI TTS with local dev proxy, IndexedDB audio chunk cache, and next-chunk prefetch for gapless playback
 - **Lock-screen controls** — Media Session metadata with cover art, play/pause/skip from the lock screen
@@ -67,7 +67,7 @@ Re-importing the same file is skipped automatically (matched by filename and siz
 
 ### Desktop
 
-1. Click **Add Books** and select `.mp3`, `.m4b`, `.m4a`, or `.epub` files (multiple allowed).
+1. Click **Add Books** and select `.mp3`, `.m4b`, `.m4a`, `.mp4`, or `.epub` files (multiple allowed).
 2. Audio files open the audio player; EPUB opens listen mode.
 3. For EPUB: tap **Listen** to start Web Speech narration.
 4. Use **Settings** to switch to OpenAI TTS for higher-quality voices.
