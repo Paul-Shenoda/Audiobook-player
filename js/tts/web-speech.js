@@ -19,6 +19,12 @@ export class WebSpeechTTS {
     this.queueIndex = 0;
     this.paused = false;
     this.speaking = false;
+    /**
+     * Bumped whenever the current utterance is cancelled or replaced. Each
+     * utterance remembers the value it was created with and ignores its events
+     * if it no longer matches (Safari fires `end` after `cancel()`).
+     */
+    this.generation = 0;
     /** @type {((index: number) => void)|null} */
     this.onChunkStart = null;
     /** @type {(() => void)|null} */
@@ -48,6 +54,7 @@ export class WebSpeechTTS {
     }
 
     const text = this.queue[this.queueIndex];
+    const generation = ++this.generation;
     this.currentUtterance = new SpeechSynthesisUtterance(text);
     this.currentUtterance.rate = this.preferredRate ?? 1;
 
@@ -61,16 +68,18 @@ export class WebSpeechTTS {
     }
 
     this.currentUtterance.onstart = () => {
+      if (generation !== this.generation) return;
       this.onChunkStart?.(this.queueIndex);
     };
 
     this.currentUtterance.onend = () => {
-      if (this.paused) return;
+      if (generation !== this.generation || this.paused) return;
       this.queueIndex += 1;
       this.speakCurrent();
     };
 
     this.currentUtterance.onerror = (event) => {
+      if (generation !== this.generation) return;
       if (event.error === 'interrupted' || event.error === 'canceled') return;
       this.speaking = false;
       this.onError?.(new Error(event.error || 'Speech synthesis error'));
@@ -79,23 +88,33 @@ export class WebSpeechTTS {
     speechSynthesis.speak(this.currentUtterance);
   }
 
+  /** Cancel whatever is speaking and make its late events harmless. */
+  cancelCurrent() {
+    this.generation += 1;
+    speechSynthesis.cancel();
+  }
+
+  /**
+   * iOS pause()/resume() is unreliable, so pausing cancels the utterance and
+   * remembers the chunk; resume() speaks that chunk again from its start.
+   */
   pause() {
-    if (!this.speaking) return;
-    speechSynthesis.pause();
+    if (!this.speaking || this.paused) return;
     this.paused = true;
+    this.cancelCurrent();
   }
 
   resume() {
     if (!this.paused) return;
-    speechSynthesis.resume();
     this.paused = false;
+    this.speakCurrent();
   }
 
   /**
    * @param {boolean} [clearQueue=true]
    */
   stop(clearQueue = true) {
-    speechSynthesis.cancel();
+    this.cancelCurrent();
     this.paused = false;
     this.speaking = false;
     this.currentUtterance = null;
@@ -130,10 +149,13 @@ export class WebSpeechTTS {
    * @param {number} rate
    */
   setRate(rate) {
-    if (this.currentUtterance) {
-      this.currentUtterance.rate = rate;
-    }
     this.preferredRate = rate;
+    // An utterance's rate is fixed once it starts, so while speaking, cancel it
+    // and say the current chunk again at the new rate.
+    if (this.speaking && !this.paused && this.currentUtterance) {
+      this.cancelCurrent();
+      this.speakCurrent();
+    }
   }
 
   getCurrentChunkIndex() {

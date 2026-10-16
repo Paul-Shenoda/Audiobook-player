@@ -1,11 +1,8 @@
 import jsmediatags from 'jsmediatags';
 import { formatTime } from '../utils/format-time.js';
-import { createManagedObjectUrl, revokeManagedObjectUrl } from '../utils/object-url.js';
 import { updateBook } from '../storage/library-db.js';
-import { estimatePercent } from '../tts/playback-state.js';
-import { playbackManager } from '../services/playback-manager.js';
-import { createProgressSaver } from '../services/progress-saver.js';
-import { clampSpeed, stepSpeed } from '../utils/playback-speed.js';
+import { playerStore } from '../services/player-store.js';
+import { stepSpeed } from '../utils/playback-speed.js';
 import {
   initMediaSession,
   setMediaPlaybackState,
@@ -14,7 +11,7 @@ import {
 } from '../services/media-session.js';
 import { createSleepTimer } from '../services/sleep-timer.js';
 import { icon } from '../utils/icons.js';
-import { renderCoverMarkup, getBookCoverUrl } from '../utils/cover-art.js';
+import { renderCoverMarkup } from '../utils/cover-art.js';
 import { seriesLabel } from '../utils/series-label.js';
 import { showToast } from '../utils/toast.js';
 
@@ -22,18 +19,17 @@ import { showToast } from '../utils/toast.js';
  * @typedef {import('../storage/library-db.js').Book} Book
  */
 
-// Smart resume: rewind a little so the listener regains context.
-const RESTORE_REWIND_S = 10; // when reopening a book
-const PAUSE_REWIND_S = 15; // when resuming after a long in-session pause
-const LONG_PAUSE_MS = 5 * 60 * 1000;
+const SKIP_BACK_S = 15;
+const SKIP_FORWARD_S = 15;
 
 /**
+ * Audio book player screen. A thin view: it renders what the player store says
+ * and sends commands to it. All <audio> handling lives in engines/audio-engine.js.
  * @param {HTMLElement} container
  * @param {Book} book
  * @param {{ onBack: () => void, keepPlaybackOnBack?: boolean }} callbacks
  */
 export function renderMp3Player(container, book, { onBack, keepPlaybackOnBack = false }) {
-  const coverUrl = getBookCoverUrl(book);
   const tracks = book.tracks ?? [];
   const totalTracks = tracks.length;
   // In-file chapter markers only apply to a book with a single physical
@@ -63,7 +59,6 @@ export function renderMp3Player(container, book, { onBack, keepPlaybackOnBack = 
           <span class="book-percent" id="book-percent" aria-label="Book progress">0%</span>
         </div>
         ` : ''}
-        <audio id="main-audio" preload="metadata"></audio>
         <div class="progress-section">
           <input type="range" class="seek-range" id="seek-bar" value="0" min="0" max="100" step="0.1" aria-label="Seek">
           <div class="time-labels">
@@ -90,7 +85,6 @@ export function renderMp3Player(container, book, { onBack, keepPlaybackOnBack = 
     </div>
   `;
 
-  const player = container.querySelector('#main-audio');
   const playBtn = container.querySelector('#play-pause-btn');
   const seekBar = container.querySelector('#seek-bar');
   const currentTimeText = container.querySelector('#current-time');
@@ -98,77 +92,17 @@ export function renderMp3Player(container, book, { onBack, keepPlaybackOnBack = 
   const bookTitle = container.querySelector('#book-title');
   const chapterLabel = container.querySelector('#chapter-label');
   const bookPercentEl = container.querySelector('#book-percent');
+  const speedLabel = container.querySelector('#speed-label');
+  const speedDownBtn = container.querySelector('#speed-down-btn');
+  const speedUpBtn = container.querySelector('#speed-up-btn');
 
-  playbackManager.audio = player;
-
-  let trackIndex = Math.min(Math.max(book.progress?.trackIndex ?? 0, 0), totalTracks - 1);
-  let resumeSeconds = trackIndex === (book.progress?.trackIndex ?? 0) ? book.progress?.seconds ?? 0 : 0;
   let bookmarks = book.bookmarks ?? [];
-  // Playback speed, remembered per book.
-  let currentRate = clampSpeed(book.playbackRate);
+  const state = () => playerStore.getState();
 
-  function currentTrack() {
-    return tracks[trackIndex];
-  }
+  // Loads the book into the store (no-op when it is already the loaded book).
+  playerStore.open(book);
 
-  function updateChapterLabel() {
-    if (!hasTrackChapters) return;
-    const track = currentTrack();
-    chapterLabel.textContent = track?.label || `Track ${trackIndex + 1}`;
-    bookTitle.textContent = book.title;
-  }
-
-  /** Which in-file chapter the playhead is currently in (0 when no chapters). */
-  function currentFileChapterIndex() {
-    let idx = 0;
-    for (let i = 0; i < fileChapters.length; i += 1) {
-      if (fileChapters[i].startSeconds <= player.currentTime) idx = i;
-      else break;
-    }
-    return idx;
-  }
-
-  let lastFileChapterIdx = -1;
-  function updateFileChapterLabel() {
-    if (!hasFileChapters) return;
-    const idx = currentFileChapterIndex();
-    if (idx === lastFileChapterIdx) return;
-    lastFileChapterIdx = idx;
-    chapterLabel.textContent = fileChapters[idx]?.title || `Chapter ${idx + 1}`;
-  }
-
-  function updateBookPercent() {
-    if (!hasChapters) return;
-    const percent = estimatePercent(trackIndex, totalTracks, player.currentTime || 0, player.duration || 1);
-    bookPercentEl.textContent = `${percent}%`;
-  }
-
-  /**
-   * Load a track by index. Continuous playback across chapter boundaries —
-   * mirrors epub-listen.js's chunk-to-chunk rollover (loadAndPrepareChapter +
-   * startListening pattern) for the same "one file per chapter" shape.
-   * @param {number} index
-   * @param {{ seconds?: number, autoplay?: boolean }} [options]
-   */
-  function loadTrack(index, { seconds = 0, autoplay = false } = {}) {
-    trackIndex = Math.min(Math.max(index, 0), totalTracks - 1);
-    const track = currentTrack();
-    // Browsers reset playbackRate to defaultPlaybackRate whenever the source
-    // changes, so set both: the speed then survives moving to the next file.
-    player.defaultPlaybackRate = currentRate;
-    player.src = createManagedObjectUrl(track.fileBlob);
-    player.playbackRate = currentRate;
-    player.currentTime = seconds;
-    updateChapterLabel();
-    if (autoplay) {
-      player.play().catch(() => setPlayIcon(false));
-    }
-  }
-
-  loadTrack(trackIndex, { seconds: Math.max(0, resumeSeconds - RESTORE_REWIND_S) });
-  updateFileChapterLabel();
-
-  jsmediatags.read(currentTrack().fileBlob, {
+  jsmediatags.read(tracks[0].fileBlob, {
     onSuccess(tag) {
       if (tag.tags.title && !hasChapters) {
         bookTitle.textContent = tag.tags.title;
@@ -179,80 +113,48 @@ export function renderMp3Player(container, book, { onBack, keepPlaybackOnBack = 
     },
   });
 
+  function setSeekFill(percent) {
+    seekBar.style.setProperty('--seek-pct', `${percent}%`);
+  }
+
+  let lastError = null;
+
+  /** Draw everything from the store's state. */
+  function render(s) {
+    if (s.book?.id !== book.id) return;
+    playBtn.innerHTML = s.status === 'playing' ? icon('pause', 30) : icon('play', 30);
+    if (s.chapterDuration) {
+      const percent = (s.chapterElapsed / s.chapterDuration) * 100;
+      seekBar.value = String(percent);
+      setSeekFill(percent);
+      currentTimeText.textContent = formatTime(s.chapterElapsed);
+      durationText.textContent = formatTime(s.chapterDuration);
+    }
+    if (hasChapters) {
+      chapterLabel.textContent = s.chapters[s.chapterIndex]?.title || `Track ${s.chapterIndex + 1}`;
+      bookPercentEl.textContent = `${s.bookPercent}%`;
+    }
+    speedLabel.textContent = `${s.rate}×`;
+    speedDownBtn.disabled = s.rate === stepSpeed(s.rate, -1);
+    speedUpBtn.disabled = s.rate === stepSpeed(s.rate, +1);
+    if (s.status === 'error' && s.error && s.error !== lastError) showToast(s.error, 'error');
+    lastError = s.status === 'error' ? s.error : null;
+  }
+  render(state());
+  const unsubscribe = playerStore.subscribe(render);
+
   container.querySelector('#back-btn').addEventListener('click', () => {
     cleanup({ keepPlayback: keepPlaybackOnBack });
     onBack();
   });
 
-  function setPlayIcon(playing) {
-    playBtn.innerHTML = playing ? icon('pause', 30) : icon('play', 30);
-  }
-
-  /** @type {number|null} */
-  let pausedAt = null;
-
-  function play() {
-    if (pausedAt && Date.now() - pausedAt > LONG_PAUSE_MS) {
-      player.currentTime = Math.max(0, player.currentTime - PAUSE_REWIND_S);
-    }
-    pausedAt = null;
-    player.play().catch(() => setPlayIcon(false));
-    setPlayIcon(true);
-    playbackManager.setPlaying(true);
-  }
-
-  function pause() {
-    pausedAt = Date.now();
-    player.pause();
-    setPlayIcon(false);
-    playbackManager.setPaused(true);
-  }
-
-  /** Step back 15s, rolling into the previous track's tail at the start. */
-  function skipBack() {
-    const target = player.currentTime - 15;
-    if (target >= 0 || trackIndex === 0) {
-      player.currentTime = Math.max(0, target);
-      return;
-    }
-    const wasPlaying = !player.paused;
-    loadTrack(trackIndex - 1, { seconds: 0, autoplay: wasPlaying });
-    // Land near the end once duration is known (metadata loads async).
-    player.addEventListener(
-      'loadedmetadata',
-      () => {
-        player.currentTime = Math.max(0, player.duration + target);
-      },
-      { once: true },
-    );
-  }
-
-  /** Step forward 15s, rolling into the next track's head at the end. */
-  function skipForward() {
-    if (!player.duration) return;
-    const target = player.currentTime + 15;
-    if (target <= player.duration || trackIndex >= totalTracks - 1) {
-      player.currentTime = Math.min(player.duration, target);
-      return;
-    }
-    const overflow = target - player.duration;
-    const wasPlaying = !player.paused;
-    loadTrack(trackIndex + 1, { seconds: overflow, autoplay: wasPlaying });
-  }
-
-  playBtn.addEventListener('click', () => {
-    if (player.paused) {
-      play();
-    } else {
-      pause();
-    }
-  });
+  playBtn.addEventListener('click', () => playerStore.toggle());
 
   const sleepBtn = container.querySelector('#sleep-btn');
   const sleepLabel = container.querySelector('#sleep-label');
   const sleepTimer = createSleepTimer({
     modes: ['off', '15', '30', '60'],
-    onExpire: pause,
+    onExpire: () => playerStore.pause(),
     onTick: (text) => {
       sleepLabel.textContent = text;
       sleepBtn.classList.toggle('sleep-btn--active', sleepTimer.getMode() !== 'off');
@@ -260,31 +162,49 @@ export function renderMp3Player(container, book, { onBack, keepPlaybackOnBack = 
   });
   sleepBtn.addEventListener('click', () => sleepTimer.cycle());
 
-  container.querySelector('#rewind-btn').addEventListener('click', skipBack);
-  container.querySelector('#forward-btn').addEventListener('click', skipForward);
+  container.querySelector('#rewind-btn').addEventListener('click', () => playerStore.skip(-SKIP_BACK_S));
+  container.querySelector('#forward-btn').addEventListener('click', () => playerStore.skip(SKIP_FORWARD_S));
 
-  function goPrevChapter() {
-    if (hasTrackChapters) {
-      if (trackIndex > 0) loadTrack(trackIndex - 1, { autoplay: !player.paused });
-    } else if (hasFileChapters) {
-      const idx = currentFileChapterIndex();
-      if (idx > 0) {
-        player.currentTime = fileChapters[idx - 1].startSeconds;
-        updateFileChapterLabel();
+  seekBar.addEventListener('input', () => {
+    setSeekFill(Number(seekBar.value));
+    playerStore.seekInChapter(Number(seekBar.value) / 100);
+  });
+
+  speedDownBtn.addEventListener('click', () => playerStore.setRate(stepSpeed(state().rate, -1)));
+  speedUpBtn.addEventListener('click', () => playerStore.setRate(stepSpeed(state().rate, +1)));
+
+  /** Seek to a position in the current file (seconds), e.g. from the lock screen. */
+  function seekFile(seconds) {
+    let start = 0;
+    if (hasFileChapters) {
+      let idx = 0;
+      for (let i = 0; i < fileChapters.length; i += 1) {
+        if (fileChapters[i].startSeconds <= seconds) idx = i;
+        else break;
       }
+      if (idx !== state().chapterIndex) playerStore.goToChapter(idx);
+      start = fileChapters[idx].startSeconds;
     }
+    const length = state().chapterDuration;
+    if (length > 0) playerStore.seekInChapter((seconds - start) / length);
   }
 
-  function goNextChapter() {
-    if (hasTrackChapters) {
-      if (trackIndex < totalTracks - 1) loadTrack(trackIndex + 1, { autoplay: !player.paused });
-    } else if (hasFileChapters) {
-      const idx = currentFileChapterIndex();
-      if (idx < fileChapters.length - 1) {
-        player.currentTime = fileChapters[idx + 1].startSeconds;
-        updateFileChapterLabel();
-      }
+  /** Jump to a position in a given file, loading that file first if needed. */
+  function jumpTo(trackIndex, seconds) {
+    if (trackIndex === state().trackIndex) {
+      seekFile(seconds);
+      return;
     }
+    playerStore.goToChapter(trackIndex);
+    // The new file's length is unknown until its metadata loads.
+    const stop = playerStore.subscribe((s) => {
+      if (s.book?.id !== book.id) {
+        stop();
+      } else if (s.trackIndex === trackIndex && s.trackDuration > 0) {
+        stop();
+        seekFile(seconds);
+      }
+    });
   }
 
   if (hasChapters) {
@@ -293,13 +213,12 @@ export function renderMp3Player(container, book, { onBack, keepPlaybackOnBack = 
 
   /** Chapter/track picker entries — either whole tracks or in-file chapter markers. */
   function chapterSheetItems() {
-    return hasTrackChapters
-      ? tracks.map((t, i) => ({ index: i, label: t.label || `Track ${i + 1}`, current: i === trackIndex }))
-      : fileChapters.map((c, i) => ({
-          index: i,
-          label: c.title || `Chapter ${i + 1}`,
-          current: i === currentFileChapterIndex(),
-        }));
+    const { chapters, chapterIndex } = state();
+    return chapters.map((c, i) => ({
+      index: i,
+      label: c.title || (hasTrackChapters ? `Track ${i + 1}` : `Chapter ${i + 1}`),
+      current: i === chapterIndex,
+    }));
   }
 
   function openChapterSheet() {
@@ -333,12 +252,7 @@ export function renderMp3Player(container, book, { onBack, keepPlaybackOnBack = 
       btn.addEventListener('click', () => {
         const idx = Number(btn.getAttribute('data-chapter-index'));
         closeSheet();
-        if (hasTrackChapters) {
-          if (idx !== trackIndex) loadTrack(idx, { autoplay: !player.paused });
-        } else {
-          player.currentTime = fileChapters[idx].startSeconds;
-          updateFileChapterLabel();
-        }
+        if (idx !== state().chapterIndex) playerStore.goToChapter(idx);
       });
     });
 
@@ -352,41 +266,15 @@ export function renderMp3Player(container, book, { onBack, keepPlaybackOnBack = 
     sheet.addEventListener('transitionend', () => sheet.remove(), { once: true });
   }
 
+
   container.querySelector('#bookmarks-btn').addEventListener('click', openBookmarksSheet);
 
-  const speedLabel = container.querySelector('#speed-label');
-  const speedDownBtn = container.querySelector('#speed-down-btn');
-  const speedUpBtn = container.querySelector('#speed-up-btn');
-  function showSpeed() {
-    speedLabel.textContent = `${currentRate}×`;
-    speedDownBtn.disabled = currentRate === stepSpeed(currentRate, -1);
-    speedUpBtn.disabled = currentRate === stepSpeed(currentRate, +1);
-  }
-  function changeSpeed(direction) {
-    currentRate = stepSpeed(currentRate, direction);
-    player.defaultPlaybackRate = currentRate;
-    player.playbackRate = currentRate;
-    showSpeed();
-    updateBook(book.id, { playbackRate: currentRate }).catch((err) => console.warn('Could not save speed', err));
-  }
-  // iOS Safari can reset playbackRate once metadata loads or once audio is
-  // actually running ('playing', which comes after 'play'), so re-apply then,
-  // and whenever something other than this player changes it ('ratechange').
-  const reapplySpeed = () => {
-    if (player.playbackRate !== currentRate) player.playbackRate = currentRate;
-  };
-  for (const event of ['loadedmetadata', 'play', 'playing', 'ratechange']) {
-    player.addEventListener(event, reapplySpeed);
-  }
-  speedDownBtn.addEventListener('click', () => changeSpeed(-1));
-  speedUpBtn.addEventListener('click', () => changeSpeed(+1));
-  showSpeed();
-
   function addBookmarkHere() {
-    const track = currentTrack();
-    const label = `${track?.label || `Track ${trackIndex + 1}`} — ${formatTime(player.currentTime)}`;
+    const { trackIndex, trackSeconds } = state();
+    const track = tracks[trackIndex];
+    const label = `${track?.label || `Track ${trackIndex + 1}`} — ${formatTime(trackSeconds)}`;
     bookmarks = [
-      { id: crypto.randomUUID(), label, createdAt: Date.now(), trackIndex, seconds: player.currentTime },
+      { id: crypto.randomUUID(), label, createdAt: Date.now(), trackIndex, seconds: trackSeconds },
       ...bookmarks,
     ];
     updateBook(book.id, { bookmarks });
@@ -402,7 +290,7 @@ export function renderMp3Player(container, book, { onBack, keepPlaybackOnBack = 
 
   function jumpToBookmark(bm) {
     closeSheet();
-    loadTrack(bm.trackIndex, { seconds: bm.seconds, autoplay: !player.paused });
+    jumpTo(bm.trackIndex ?? 0, bm.seconds ?? 0);
   }
 
   function openBookmarksSheet() {
@@ -454,113 +342,41 @@ export function renderMp3Player(container, book, { onBack, keepPlaybackOnBack = 
     });
   }
 
+
+  // Lock-screen controls and playback state follow the store, not this view.
+  // With keepPlaybackOnBack this subscription outlives the view, until another book replaces this one.
   initMediaSession(book, {
-    onPlay: play,
-    onPause: pause,
-    onSeekBackward: skipBack,
-    onSeekForward: skipForward,
-    onSeekTo: (seconds) => {
-      player.currentTime = seconds;
-    },
-    onPreviousTrack: hasChapters ? goPrevChapter : undefined,
-    onNextTrack: hasChapters ? goNextChapter : undefined,
+    onPlay: () => playerStore.play(),
+    onPause: () => playerStore.pause(),
+    onSeekBackward: () => playerStore.skip(-SKIP_BACK_S),
+    onSeekForward: () => playerStore.skip(SKIP_FORWARD_S),
+    onSeekTo: seekFile,
+    onPreviousTrack: hasChapters ? () => playerStore.prevChapter() : undefined,
+    onNextTrack: hasChapters ? () => playerStore.nextChapter() : undefined,
   });
 
-  player.addEventListener('play', () => setMediaPlaybackState('playing'));
-  player.addEventListener('pause', () => setMediaPlaybackState('paused'));
-
-  function setSeekFill(percent) {
-    seekBar.style.setProperty('--seek-pct', `${percent}%`);
-  }
-
-  // Time labels, seek bar and lock-screen position. Also runs as soon as the
-  // file's metadata loads, so a just-opened book shows its length before Play.
-  function renderTime() {
-    if (!player.duration) return;
-    const percent = (player.currentTime / player.duration) * 100;
-    seekBar.value = String(percent);
-    setSeekFill(percent);
-    currentTimeText.textContent = formatTime(player.currentTime);
-    durationText.textContent = formatTime(player.duration);
-    updateBookPercent();
-    updateFileChapterLabel();
-    setMediaPositionState({
-      duration: player.duration,
-      position: player.currentTime,
-      playbackRate: player.playbackRate,
-    });
-  }
-  player.addEventListener('timeupdate', renderTime);
-  player.addEventListener('loadedmetadata', renderTime);
-  player.addEventListener('durationchange', renderTime);
-
-  seekBar.addEventListener('input', () => {
-    setSeekFill(Number(seekBar.value));
-    if (!player.duration) return;
-    player.currentTime = (Number(seekBar.value) / 100) * player.duration;
-  });
-
-  player.addEventListener('ended', () => {
-    if (trackIndex < totalTracks - 1) {
-      loadTrack(trackIndex + 1, { autoplay: true });
+  const unsubscribeMedia = playerStore.subscribe((s) => {
+    if (s.book?.id !== book.id) {
+      unsubscribeMedia();
       return;
     }
-    setPlayIcon(false);
-    seekBar.value = '0';
-    playbackManager.setPaused(true);
-    updateBook(book.id, { finishedAt: Date.now() });
+    setMediaPlaybackState(s.status === 'playing' ? 'playing' : 'paused');
+    setMediaPositionState({ duration: s.trackDuration, position: s.trackSeconds, playbackRate: s.rate });
   });
-
-  // Nothing is saved until the book has actually played in this session, so
-  // opening and closing it doesn't store the 10 s restore rewind.
-  let hasPlayed = false;
-  player.addEventListener('play', () => {
-    hasPlayed = true;
-  });
-
-  function saveProgress() {
-    if (!player.duration || !hasPlayed) return;
-    const percent = estimatePercent(trackIndex, totalTracks, player.currentTime, player.duration);
-    updateBook(book.id, {
-      lastOpenedAt: Date.now(),
-      progress: { trackIndex, seconds: player.currentTime, percent },
-    }).catch((err) => console.warn('Could not save progress', err));
-  }
-
-  // Save every few seconds while playing, and immediately on pause, seek, or
-  // when the app is hidden or closed (iOS gives no later chance to save).
-  const saver = createProgressSaver({ save: saveProgress });
-  const saveOnHidden = () => {
-    if (document.visibilityState === 'hidden') saver.flush();
-  };
-  const saveOnPageHide = () => saver.flush();
-  player.addEventListener('timeupdate', () => saver.tick());
-  player.addEventListener('pause', () => saver.flush());
-  player.addEventListener('seeked', () => saver.flush());
-  document.addEventListener('visibilitychange', saveOnHidden);
-  window.addEventListener('pagehide', saveOnPageHide);
 
   /**
    * @param {{ keepPlayback?: boolean }} options
    */
   function cleanup(options = {}) {
     const { keepPlayback = false } = options;
-    saver.flush();
+    unsubscribe();
     closeSheet();
     if (!keepPlayback) {
-      // Playback is really stopping: stop saving. (With keepPlayback the mini
-      // player keeps playing, so saving keeps going too.)
-      saver.dispose();
-      document.removeEventListener('visibilitychange', saveOnHidden);
-      window.removeEventListener('pagehide', saveOnPageHide);
+      // Playback is really stopping.
+      unsubscribeMedia();
       sleepTimer.destroy();
-      player.pause();
-      revokeManagedObjectUrl();
-      playbackManager.audio = null;
+      playerStore.pause();
       teardownMediaSession();
-    }
-    if (coverUrl && !book.coverBlob) {
-      // fallback url managed by cover-art cache
     }
   }
 

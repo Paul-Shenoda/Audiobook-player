@@ -4,8 +4,10 @@ import { showToast } from './utils/toast.js';
 import { renderMp3Player } from './views/mp3-player.js';
 import { renderEpubListen } from './views/epub-listen.js';
 import { renderSettings } from './views/settings.js';
-import { renderMiniPlayer } from './views/mini-player.js';
-import { playbackManager } from './services/playback-manager.js';
+import { mountMiniPlayer } from './views/mini-player.js';
+import { playerStore } from './services/player-store.js';
+import { createAudioEngine } from './engines/audio-engine.js';
+import { createTtsEngine } from './engines/tts-engine.js';
 import { createViewLifecycle } from './services/view-lifecycle.js';
 import { getBook } from './storage/library-db.js';
 
@@ -33,11 +35,13 @@ if ('audioSession' in navigator) {
 }
 
 // Cleans up views, including a player still playing in the background.
-const lifecycle = createViewLifecycle({ clearPlayback: () => playbackManager.clear() });
+const lifecycle = createViewLifecycle({ clearPlayback: () => playerStore.close() });
 
-playbackManager.onStateChange = () => {
-  renderMiniPlayer(miniPlayerEl, { onOpenBook: openBook });
-};
+// One engine per open book: audio files play through <audio>, EPUBs through TTS.
+playerStore.setEngineFactory((kind) => (kind === 'audio' ? createAudioEngine() : createTtsEngine()));
+
+// The mini player follows the store by itself; no view needs to redraw it.
+mountMiniPlayer(miniPlayerEl, { onOpenBook: openBook });
 
 async function showLibrary() {
   runCleanup({ keepPlayback: true });
@@ -45,7 +49,6 @@ async function showLibrary() {
     onOpenBook: openBook,
     onOpenSettings: showSettings,
   });
-  renderMiniPlayer(miniPlayerEl, { onOpenBook: openBook });
 }
 
 /**
@@ -72,13 +75,11 @@ async function openBook(book) {
  */
 function showMp3Player(book) {
   runCleanup({ keepPlayback: false });
-  playbackManager.setActive(book, 'mp3');
   const view = renderMp3Player(app, book, {
     onBack: showLibrary,
     keepPlaybackOnBack: true,
   });
   lifecycle.show(view.cleanup, book.id);
-  renderMiniPlayer(miniPlayerEl, { onOpenBook: openBook });
 }
 
 /**
@@ -86,20 +87,17 @@ function showMp3Player(book) {
  */
 async function showEpubListen(book) {
   runCleanup({ keepPlayback: false });
-  playbackManager.setActive(book, 'epub');
   const view = await renderEpubListen(app, book, {
     onBack: showLibrary,
     onOpenSettings: showSettings,
     keepPlaybackOnBack: true,
   });
   lifecycle.show(view.cleanup, book.id);
-  renderMiniPlayer(miniPlayerEl, { onOpenBook: openBook });
 }
 
 async function showSettings() {
   runCleanup({ keepPlayback: true });
   await renderSettings(app, { onBack: showLibrary });
-  renderMiniPlayer(miniPlayerEl, { onOpenBook: openBook });
 }
 
 /**
@@ -107,7 +105,6 @@ async function showSettings() {
  */
 function runCleanup(options = {}) {
   lifecycle.leave(options);
-  renderMiniPlayer(miniPlayerEl, { onOpenBook: openBook });
 }
 
 showLibrary();
