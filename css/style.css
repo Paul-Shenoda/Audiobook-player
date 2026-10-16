@@ -5,32 +5,28 @@
 }
 
 :root {
-    --primary-color: #f6993c;
-    --primary-hover: #e8882b;
-    --bg-color: #0f1419;
-    --card-color: #1a2332;
-    --surface-color: #243044;
-    --text-color: #f3f4f6;
-    --text-secondary: #9ca3af;
-    --border-color: #2d3a4f;
-    --error-color: #ef4444;
-    --on-primary: #1a1206;
-    --primary-active: #d97512;
-    --primary-subtle: rgba(246, 153, 60, 0.14);
-    --primary-ring: rgba(246, 153, 60, 0.35);
-    --radius-sm: 8px;
-    --radius: 12px;
-    --radius-lg: 16px;
-    --radius-pill: 999px;
-    --shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
-    --ease-out: cubic-bezier(0.25, 1, 0.5, 1);
-    --ease-in-out: cubic-bezier(0.45, 0, 0.55, 1);
-    --duration-fast: 0.15s;
-    --duration-base: 0.25s;
+    /* Legacy names now alias the Night Shelf tokens (css/tokens.css). */
+    --primary-color: var(--accent);
+    --primary-hover: var(--accent-hover);
+    --bg-color: var(--bg);
+    --card-color: var(--surface);
+    --surface-color: var(--surface-2);
+    --text-color: var(--ink);
+    --text-secondary: var(--muted);
+    --border-color: var(--rule);
+    --error-color: var(--danger);
+    --on-primary: var(--on-accent);
+    --primary-active: var(--accent);
+    --primary-subtle: var(--accent-subtle);
+    --primary-ring: var(--accent-ring);
+    --radius-sm: var(--r-8);
+    --radius: var(--r-12);
+    --radius-lg: var(--r-16);
+    --radius-pill: var(--r-pill);
 }
 
 body {
-    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    font-family: var(--font-body);
     background-color: var(--bg-color);
     color: var(--text-color);
     min-height: 100vh;
@@ -100,7 +96,7 @@ body {
 
 .app-toast--error {
     border-color: var(--error-color);
-    color: #fecaca;
+    color: var(--danger-ink);
 }
 
 .mini-player-bar {
@@ -192,6 +188,28 @@ button:active {
 button:focus-visible {
     outline: 2px solid var(--primary-color);
     outline-offset: 2px;
+}
+
+:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+h1,
+h2,
+h3 {
+    font-family: var(--font-display);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
 }
 
 .primary-btn {

@@ -219,7 +219,7 @@
     align-items: center;
     justify-content: center;
     gap: 4px;
-    box-shadow: 0 4px 15px rgba(246, 153, 60, 0.35);
+    box-shadow: 0 4px 15px var(--accent-ring);
     transition: transform var(--duration-fast) var(--ease-out);
 }
 
@@ -441,7 +441,7 @@
 .chapter-sheet {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.6);
+    background: var(--scrim);
     display: flex;
     align-items: flex-end;
     justify-content: center;

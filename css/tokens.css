@@ -1,0 +1,61 @@
+/* Night Shelf design tokens. Everything else in css/ should use these variables. */
+:root {
+    /* Surfaces */
+    --bg: #17141f;
+    --surface: #221e2c;
+    --surface-2: #2e2939;
+    --cover-teal: #1f4e5f;
+
+    /* Text */
+    --ink: #f1ece4;
+    --ink-2: #d5cedf;
+    --muted: #aba3b8;
+
+    /* Lines and progress tracks */
+    --rule: #4a4358;
+    --track: #3a3446;
+
+    /* Accent (amber) */
+    --accent: #f4b54a;
+    --accent-hover: #ffcb6e;
+    --on-accent: #2a1b05;
+    --accent-subtle: rgba(244, 181, 74, 0.14);
+    --accent-ring: rgba(244, 181, 74, 0.35);
+
+    /* Status */
+    --success: #9fd9b4;
+    --danger: #f2827f;
+    --danger-ink: #ffd9d6;
+
+    /* Overlays and shadows */
+    --scrim: rgba(14, 12, 19, 0.6);
+    --scrim-strong: rgba(14, 12, 19, 0.78);
+    --shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+
+    /* Fonts: Bricolage Grotesque for headings, Atkinson Hyperlegible for body */
+    --font-display: 'Bricolage Grotesque', 'Segoe UI', system-ui, -apple-system, sans-serif;
+    --font-body: 'Atkinson Hyperlegible', 'Segoe UI', system-ui, -apple-system, sans-serif;
+
+    /* Radii */
+    --r-8: 8px;
+    --r-12: 12px;
+    --r-14: 14px;
+    --r-16: 16px;
+    --r-24: 24px;
+    --r-pill: 999px;
+
+    /* Spacing scale */
+    --space-1: 4px;
+    --space-2: 8px;
+    --space-3: 12px;
+    --space-4: 16px;
+    --space-5: 24px;
+    --space-6: 32px;
+    --space-7: 48px;
+
+    /* Motion */
+    --ease-out: cubic-bezier(0.25, 1, 0.5, 1);
+    --ease-in-out: cubic-bezier(0.45, 0, 0.55, 1);
+    --duration-fast: 0.15s;
+    --duration-base: 0.25s;
+}

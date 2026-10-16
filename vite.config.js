@@ -109,6 +109,23 @@ export default defineConfig({
         globIgnores: ['**/kokoro-worker-*.js'],
         // Never intercept the TTS proxy or other API calls.
         navigateFallbackDenylist: [/^\/api\//],
+        // Night Shelf fonts (Google Fonts): CSS revalidates, font files are immutable.
+        runtimeCaching: [
+          {
+            urlPattern: /^https:\/\/fonts\.googleapis\.com\//,
+            handler: 'StaleWhileRevalidate',
+            options: { cacheName: 'google-fonts-styles' },
+          },
+          {
+            urlPattern: /^https:\/\/fonts\.gstatic\.com\//,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'google-fonts-files',
+              expiration: { maxEntries: 20, maxAgeSeconds: 60 * 60 * 24 * 365 },
+              cacheableResponse: { statuses: [0, 200] },
+            },
+          },
+        ],
       },
     }),
   ],
