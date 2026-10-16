@@ -21,6 +21,17 @@ if (!miniPlayerEl) {
   document.body.appendChild(miniPlayerEl);
 }
 
+// Tell iOS this is a media player (Safari 16.4+ Audio Session API), so audio
+// keeps playing in the background and on the lock screen instead of being
+// treated as ambient sound that stops when the app is left.
+if ('audioSession' in navigator) {
+  try {
+    navigator.audioSession.type = 'playback';
+  } catch {
+    // Unsupported type on this browser: keep the default behaviour.
+  }
+}
+
 // Cleans up views, including a player still playing in the background.
 const lifecycle = createViewLifecycle({ clearPlayback: () => playbackManager.clear() });
 

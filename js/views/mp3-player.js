@@ -369,12 +369,15 @@ export function renderMp3Player(container, book, { onBack, keepPlaybackOnBack = 
     showSpeed();
     updateBook(book.id, { playbackRate: currentRate }).catch((err) => console.warn('Could not save speed', err));
   }
-  // iOS Safari can reset playbackRate once metadata loads or playback starts.
+  // iOS Safari can reset playbackRate once metadata loads or once audio is
+  // actually running ('playing', which comes after 'play'), so re-apply then,
+  // and whenever something other than this player changes it ('ratechange').
   const reapplySpeed = () => {
     if (player.playbackRate !== currentRate) player.playbackRate = currentRate;
   };
-  player.addEventListener('loadedmetadata', reapplySpeed);
-  player.addEventListener('play', reapplySpeed);
+  for (const event of ['loadedmetadata', 'play', 'playing', 'ratechange']) {
+    player.addEventListener(event, reapplySpeed);
+  }
   speedDownBtn.addEventListener('click', () => changeSpeed(-1));
   speedUpBtn.addEventListener('click', () => changeSpeed(+1));
   showSpeed();
