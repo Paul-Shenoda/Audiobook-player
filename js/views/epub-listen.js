@@ -158,8 +158,10 @@ export async function renderEpubListen(container, book, { onBack, onOpenSettings
     }
   }
 
+  // Per-book speed; a book without one starts at the default from Settings.
   // Nearest offered step, so the display is always one of the labelled values.
-  let currentRate = clampSpeed(settings.rate, EPUB_MAX_SPEED);
+  let currentRate = clampSpeed(book.playbackRate ?? settings.rate, EPUB_MAX_SPEED);
+  ttsRouter.setRate(currentRate, { saveAsDefault: false });
 
   const speedLabel = container.querySelector('#speed-label');
   function updateSpeedDisplay() {
@@ -171,7 +173,8 @@ export async function renderEpubListen(container, book, { onBack, onOpenSettings
 
   function changeSpeed(direction) {
     currentRate = stepSpeed(currentRate, direction, EPUB_MAX_SPEED);
-    ttsRouter.setRate(currentRate);
+    ttsRouter.setRate(currentRate, { saveAsDefault: false });
+    updateBook(book.id, { playbackRate: currentRate }).catch((err) => console.warn('Could not save speed', err));
     updateSpeedDisplay();
     updateProgressDisplay(currentChunkIndex);
   }

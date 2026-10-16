@@ -145,3 +145,30 @@ describe('TTSRouter.configure', () => {
     expect(router.providerChain).toEqual([]);
   });
 });
+
+describe('TTSRouter.setRate', () => {
+  beforeEach(() => localStorage.clear());
+
+  it('can apply a per-book speed without changing the saved default', () => {
+    // Regression: every EPUB speed change was saved as the global default, so
+    // all EPUBs (even newly added ones) shared one speed.
+    saveTTSSettings({ ...defaultSettings(), rate: 1 });
+    const router = new TTSRouter();
+    router.configure(loadTTSSettings());
+
+    router.setRate(1.75, { saveAsDefault: false });
+
+    expect(router.settings.rate).toBe(1.75);
+    expect(loadTTSSettings().rate).toBe(1);
+  });
+
+  it('still saves the default when asked (Settings screen behaviour)', () => {
+    saveTTSSettings({ ...defaultSettings(), rate: 1 });
+    const router = new TTSRouter();
+    router.configure(loadTTSSettings());
+
+    router.setRate(1.5);
+
+    expect(loadTTSSettings().rate).toBe(1.5);
+  });
+});

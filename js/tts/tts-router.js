@@ -322,11 +322,14 @@ export class TTSRouter {
 
   /**
    * Update playback rate immediately, even while speaking.
+   * EPUB listen mode passes { saveAsDefault: false }: its speed is saved per
+   * book, so changing it must not change the default every other book uses.
    * @param {number} rate
+   * @param {{ saveAsDefault?: boolean }} [options]
    */
-  setRate(rate) {
+  setRate(rate, { saveAsDefault = true } = {}) {
     this.settings = { ...this.settings, rate };
-    saveTTSSettings(this.settings);
+    if (saveAsDefault) saveTTSSettings(this.settings);
     this.webSpeech.setRate(rate);
     if (this.audio) {
       this.audio.playbackRate = rate;
