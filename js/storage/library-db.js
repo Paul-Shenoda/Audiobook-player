@@ -81,6 +81,8 @@ const BOOKS_STORE = 'books';
  * @property {number|null} [finishedAt] set when the book is completed
  * @property {SeriesInfo|null} [series]
  * @property {Bookmark[]} [bookmarks] always populated by `normalizeBook`
+ * @property {string[]} [shelves] ids of the shelves this book is on (see
+ *   `storage/shelves.js`); `normalizeBook` defaults it to []
  * @property {BookProgress} progress
  */
 
@@ -99,6 +101,7 @@ export function normalizeBook(book) {
     ...book,
     series: book.series ?? null,
     bookmarks: book.bookmarks ?? [],
+    shelves: book.shelves ?? [],
   };
 
   if (book.type === 'mp3' && !book.tracks?.length) {

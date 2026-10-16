@@ -8,7 +8,10 @@ import { requestPersistentStorage } from '../utils/storage-persist.js';
 import { clearBookCache } from '../tts/chunk-cache.js';
 import { showToast } from '../utils/toast.js';
 import { isIOS } from '../utils/platform.js';
-import { filterBooks, searchBooks, sortBooks, pickContinueBook, bookStatus } from '../utils/book-filters.js';
+import { filterBooks, filterByShelf, emptyKind, searchBooks, sortBooks, pickContinueBook, bookStatus } from '../utils/book-filters.js';
+import { listShelves, renameShelf, createShelf, deleteShelf, shelfSummaries } from '../storage/shelves.js';
+import { openBookShelvesSheet, openShelfNameSheet } from './shelf-sheets.js';
+import { hashHue } from '../utils/cover-fallback.js';
 import { icon } from '../utils/icons.js';
 import {
   renderCoverMarkup,
@@ -35,6 +38,36 @@ let viewMode = localStorage.getItem(VIEW_KEY) === 'grid' ? 'grid' : 'list';
 
 const GRID_ICON = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="4" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.5"/></svg>';
 
+const TAB_KEY = 'library-tab';
+
+/**
+ * Which part of the library is showing: 'all' books, the 'shelves' grid
+ * (phones), or one shelf's books. Remembered as 'all', 'shelves' or 'shelf:<id>'.
+ * @type {{ tab: 'all'|'shelves', shelfId: string|null }}
+ */
+let viewState = loadViewState();
+
+function loadViewState() {
+  try {
+    const saved = localStorage.getItem(TAB_KEY) ?? 'all';
+    if (saved === 'shelves') return { tab: 'shelves', shelfId: null };
+    if (saved.startsWith('shelf:')) return { tab: 'shelves', shelfId: saved.slice(6) };
+  } catch {
+    // Storage unavailable: start on All books.
+  }
+  return { tab: 'all', shelfId: null };
+}
+
+/** @param {'all'|'shelves'} tab @param {string|null} [shelfId] */
+function setViewState(tab, shelfId = null) {
+  viewState = { tab, shelfId };
+  try {
+    localStorage.setItem(TAB_KEY, shelfId ? `shelf:${shelfId}` : tab);
+  } catch {
+    // Storage unavailable: the choice lasts for this session only.
+  }
+}
+
 const SORT_KEY = 'library-sort';
 /** @type {'recent'|'title'|'author'} */
 let sortBy = /** @type {any} */ (localStorage.getItem(SORT_KEY)) || 'recent';
@@ -45,23 +78,59 @@ let sortBy = /** @type {any} */ (localStorage.getItem(SORT_KEY)) || 'recent';
  */
 export async function renderLibrary(container, { onOpenBook, onOpenSettings }) {
   const books = await getAllBooks();
-  const continueBook = pickContinueBook(books);
+  const shelves = listShelves();
+  const summaries = shelfSummaries(shelves, books);
+  // A remembered shelf may have been deleted: fall back to the Shelves tab.
+  if (viewState.shelfId && !shelves.some((s) => s.id === viewState.shelfId)) setViewState('shelves');
+  const activeShelf = shelves.find((s) => s.id === viewState.shelfId) ?? null;
+  const mode = activeShelf ? 'shelf' : viewState.tab;
+  const continueBook = activeShelf ? null : pickContinueBook(books);
   container.innerHTML = `
-    <div class="library-view">
+    <div class="library-view" data-mode="${mode}">
       <nav class="library-sidebar" aria-label="Library navigation">
         <div class="sidebar-brand">${icon('library', 28)}<span>My Library</span></div>
         <ul class="sidebar-nav">
-          <li><button class="sidebar-link sidebar-link--current" type="button" aria-current="page">${icon('library', 20)} Library</button></li>
+          <li><button class="sidebar-link ${activeShelf ? '' : 'sidebar-link--current'}" id="sidebar-all" type="button" ${activeShelf ? '' : 'aria-current="page"'}>${icon('library', 20)} Library</button></li>
           <li><button class="sidebar-link" id="sidebar-settings" type="button">${icon('settings', 20)} Settings</button></li>
         </ul>
+        <div class="sidebar-shelves">
+          <div class="sidebar-shelves-head">
+            <h2>Shelves</h2>
+            <button class="sidebar-shelves-add" type="button" data-new-shelf aria-label="New shelf">${icon('add', 18)}</button>
+          </div>
+          ${summaries.length
+            ? `<ul class="sidebar-shelf-list">${summaries.map((s) => renderSidebarShelf(s, activeShelf)).join('')}</ul>`
+            : '<p class="sidebar-shelves-empty">No shelves yet.</p>'}
+        </div>
         <button class="sidebar-add primary-btn" id="sidebar-add" type="button">${icon('add', 20)} Add books</button>
         <button class="sidebar-link sidebar-combine" id="sidebar-combine" type="button">${icon('layers', 20)} Combine files</button>
         <p class="sidebar-note">MP3, M4B, M4A and EPUB. Files stay in this browser.</p>
       </nav>
 
       <div class="library-main">
-        <header class="library-header">
-          <h1 class="library-title">Library</h1>
+        <div class="shelves-pane">
+          <header class="library-header">
+            <h1 class="library-title">Shelves</h1>
+          </header>
+          <div class="shelf-grid">
+            ${summaries.map((s) => renderShelfCard(s)).join('')}
+            <button class="shelf-card shelf-card--new" type="button" data-new-shelf>${icon('add', 24)}<span>New shelf</span></button>
+          </div>
+          <p class="shelves-help">A book can sit on more than one shelf. Use the menu on any book to add it.</p>
+        </div>
+
+        <div class="books-pane">
+        <header class="library-header ${activeShelf ? 'library-header--shelf' : ''}">
+          ${activeShelf ? `<button class="round-btn shelf-back" type="button" data-nav="shelves" aria-label="Back to Shelves">${icon('chevronLeft', 20)}</button>` : ''}
+          <h1 class="library-title ${activeShelf ? 'library-title--shelf' : ''}">${activeShelf ? escapeHtml(activeShelf.name) : 'Library'}</h1>
+          ${activeShelf ? `
+          <div class="book-card-menu shelf-menu">
+            <button class="book-menu-btn icon-btn-touch shelf-menu-btn" type="button" aria-label="Shelf options for ${escapeAttr(activeShelf.name)}" aria-haspopup="menu">${icon('more')}</button>
+            <div class="book-menu" role="menu">
+              <button type="button" role="menuitem" data-rename-shelf>${icon('edit', 18)} Rename</button>
+              <button type="button" role="menuitem" data-delete-shelf>${icon('trash', 18)} Delete shelf</button>
+            </div>
+          </div>` : ''}
           <div class="header-actions">
             <button class="round-btn" id="search-toggle" type="button" aria-label="Search library" aria-expanded="${searchQuery ? 'true' : 'false'}">${icon('search', 20)}</button>
             <button class="round-btn header-extra" id="settings-btn" type="button" aria-label="Settings">${icon('settings', 20)}</button>
@@ -79,7 +148,7 @@ export async function renderLibrary(container, { onOpenBook, onOpenSettings }) {
           <input type="search" id="search-input" placeholder="Search title or author" value="${escapeAttr(searchQuery)}" aria-label="Search library">
         </div>
 
-        <p class="import-hint">On iPhone: Files → On My iPhone → select one or more EPUBs. Multiple chapter files for the same book? Use the combine icon (${icon('layers', 14)}) instead.</p>
+        ${activeShelf ? '' : `<p class="import-hint">On iPhone: Files → On My iPhone → select one or more EPUBs. Multiple chapter files for the same book? Use the combine icon (${icon('layers', 14)}) instead.</p>`}
 
         <div id="import-status" class="import-status" hidden></div>
 
@@ -87,12 +156,12 @@ export async function renderLibrary(container, { onOpenBook, onOpenSettings }) {
 
         <section class="library-section">
           <div class="library-controls">
-            <div class="filter-tabs" role="tablist" aria-label="Filter books">
+            ${activeShelf ? '' : `<div class="filter-tabs" role="tablist" aria-label="Filter books">
               ${renderFilterTab('all', 'All', activeFilter)}
               ${renderFilterTab('epub', 'EPUB', activeFilter)}
               ${renderFilterTab('mp3', 'Audio', activeFilter)}
               ${renderFilterTab('finished', 'Finished', activeFilter)}
-            </div>
+            </div>`}
             <div class="library-toolbar">
               <label class="sort-wrap">${icon('sort', 18)}
                 <select id="sort-select" aria-label="Sort library">
@@ -108,20 +177,26 @@ export async function renderLibrary(container, { onOpenBook, onOpenSettings }) {
         </section>
 
         ${isIOS() ? '<p class="storage-notice">Books are stored in this browser. Safari may free space if storage is low.</p>' : ''}
+        </div>
       </div>
+
+      <nav class="bottom-nav" aria-label="Library sections">
+        <button type="button" data-nav="all" ${mode === 'all' ? 'aria-current="page"' : ''}>${icon('library', 24)}<span>All books</span></button>
+        <button type="button" data-nav="shelves" ${mode !== 'all' ? 'aria-current="page"' : ''}>${icon('shelf', 24)}<span>Shelves</span></button>
+      </nav>
     </div>
   `;
+
+  const rerender = () => renderLibrary(container, { onOpenBook, onOpenSettings });
 
   const booksArea = container.querySelector('#library-books');
 
   async function renderBooksArea() {
-    const visible = sortBooks(
-      searchBooks(filterBooks(books, activeFilter), searchQuery),
-      sortBy,
-    );
+    const base = activeShelf ? filterByShelf(books, activeShelf.id) : filterBooks(books, activeFilter);
+    const visible = sortBooks(searchBooks(base, searchQuery), sortBy);
     booksArea.innerHTML = visible.length
       ? renderBookGrid(visible)
-      : renderEmptyState(activeFilter, searchQuery);
+      : renderEmptyState(activeFilter, searchQuery, activeShelf, emptyKind(books, activeFilter));
 
     await hydrateCoverUrls(visible);
     patchCoversInDom(booksArea, visible);
@@ -157,6 +232,22 @@ export async function renderLibrary(container, { onOpenBook, onOpenSettings }) {
       });
     });
 
+    booksArea.querySelectorAll('[data-shelves-id]').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const book = visible.find((b) => b.id === btn.getAttribute('data-shelves-id'));
+        if (!book) return;
+        container.querySelectorAll('.book-menu--open').forEach((m) => m.classList.remove('book-menu--open'));
+        openBookShelvesSheet({
+          book,
+          opener: btn.closest('.book-card-menu')?.querySelector('.book-menu-btn'),
+          onClose: (changed) => {
+            if (changed) rerender();
+          },
+        });
+      });
+    });
+
     booksArea.querySelectorAll('[data-finish-id]').forEach((btn) => {
       btn.addEventListener('click', async (e) => {
         e.stopPropagation();
@@ -188,6 +279,64 @@ export async function renderLibrary(container, { onOpenBook, onOpenSettings }) {
   if (continueBook) {
     await hydrateCoverUrls([continueBook]);
     patchCoversInDom(container, [continueBook]);
+  }
+
+  container.querySelectorAll('[data-nav]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      setViewState(btn.getAttribute('data-nav') === 'shelves' ? 'shelves' : 'all');
+      rerender();
+    });
+  });
+  container.querySelector('#sidebar-all').addEventListener('click', () => {
+    setViewState('all');
+    rerender();
+  });
+  container.querySelectorAll('[data-shelf-open]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      setViewState('shelves', btn.getAttribute('data-shelf-open'));
+      rerender();
+    });
+  });
+  container.querySelectorAll('[data-new-shelf]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      openShelfNameSheet({
+        title: 'New shelf',
+        submitLabel: 'Create shelf',
+        opener: btn,
+        onSubmit: (name) => {
+          const shelf = createShelf(name);
+          setViewState('shelves', shelf.id);
+          rerender();
+        },
+      });
+    });
+  });
+  if (activeShelf) {
+    const shelfMenu = container.querySelector('.shelf-menu');
+    shelfMenu.querySelector('.shelf-menu-btn').addEventListener('click', (e) => {
+      e.stopPropagation();
+      shelfMenu.querySelector('.book-menu').classList.toggle('book-menu--open');
+    });
+    shelfMenu.querySelector('[data-rename-shelf]').addEventListener('click', () => {
+      shelfMenu.querySelector('.book-menu').classList.remove('book-menu--open');
+      openShelfNameSheet({
+        title: 'Rename shelf',
+        submitLabel: 'Save',
+        initial: activeShelf.name,
+        opener: shelfMenu.querySelector('.shelf-menu-btn'),
+        onSubmit: (name) => {
+          renameShelf(activeShelf.id, name);
+          rerender();
+        },
+      });
+    });
+    shelfMenu.querySelector('[data-delete-shelf]').addEventListener('click', async () => {
+      if (!confirm(`Delete the shelf “${activeShelf.name}”? The books stay in your library.`)) return;
+      await deleteShelf(activeShelf.id);
+      setViewState('shelves');
+      showToast('Shelf deleted', 'info');
+      rerender();
+    });
   }
 
   container.querySelector('#settings-btn').addEventListener('click', onOpenSettings);
@@ -486,6 +635,55 @@ function renderFilterTab(filter, label, active) {
 }
 
 
+const SPINES_ON_CARD = 4;
+
+/**
+ * Inline custom properties for a shelf's spines: the fallback-cover colour of
+ * each of its first books. Missing spines keep the neutral CSS default.
+ * @param {Book[]} shelfBooks
+ * @param {number} count
+ */
+function spineStyle(shelfBooks, count) {
+  return shelfBooks
+    .slice(0, count)
+    .map((b, i) => `--c${i + 1}: hsl(${hashHue(b.title || b.author || 'book')}, 45%, 28%)`)
+    .join('; ');
+}
+
+/**
+ * @param {{ shelf: { id: string, name: string }, count: number, books: Book[] }} summary
+ */
+function renderShelfCard({ shelf, count, books }) {
+  return `
+    <button class="shelf-card" type="button" data-shelf-open="${escapeAttr(shelf.id)}">
+      <span class="spines" style="${spineStyle(books, SPINES_ON_CARD)}" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+      <span class="shelf-card-text">
+        <span class="shelf-card-name">${escapeHtml(shelf.name)}</span>
+        <span class="shelf-card-count">${count} ${count === 1 ? 'book' : 'books'}</span>
+      </span>
+    </button>
+  `;
+}
+
+/**
+ * @param {{ shelf: { id: string, name: string }, count: number, books: Book[] }} summary
+ * @param {{ id: string }|null} active
+ */
+function renderSidebarShelf({ shelf, count, books }, active) {
+  const current = active?.id === shelf.id;
+  return `
+    <li>
+      <button class="sidebar-shelf ${current ? 'sidebar-shelf--current' : ''}" type="button" data-shelf-open="${escapeAttr(shelf.id)}" ${current ? 'aria-current="page"' : ''}>
+        <span class="spines spines--sm" style="${spineStyle(books, 3)}" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span class="sidebar-shelf-text">
+          <span class="sidebar-shelf-name">${escapeHtml(shelf.name)}</span>
+          <span class="sidebar-shelf-count">${count} ${count === 1 ? 'book' : 'books'}</span>
+        </span>
+      </button>
+    </li>
+  `;
+}
+
 /**
  * @param {Book} book
  */
@@ -550,6 +748,7 @@ function renderBookCard(book) {
         <button class="book-menu-btn icon-btn-touch" data-book-id="${book.id}" type="button" aria-label="More options for ${escapeAttr(book.title)}" aria-haspopup="menu">${icon('more')}</button>
         <div class="book-menu" role="menu">
           <button type="button" role="menuitem" data-edit-id="${book.id}">${icon('edit', 18)} Edit details</button>
+          <button type="button" role="menuitem" data-shelves-id="${book.id}">${icon('shelf', 18)} Shelves…</button>
           <button type="button" role="menuitem" data-finish-id="${book.id}">${icon('check', 18)} ${book.finishedAt ? 'Mark unfinished' : 'Mark finished'}</button>
           <button type="button" role="menuitem" data-delete-id="${book.id}">${icon('trash', 18)} Remove</button>
         </div>
@@ -561,12 +760,30 @@ function renderBookCard(book) {
 /**
  * @param {'all'|'epub'|'mp3'|'finished'} filter
  * @param {string} [query]
+ * @param {{ name: string }|null} [shelf] the shelf being shown, if any
+ * @param {'finished-only'|'none'} [kind] see `emptyKind`
  */
-function renderEmptyState(filter, query = '') {
+function renderEmptyState(filter, query = '', shelf = null, kind = 'none') {
   if (query.trim()) {
     return `
       <div class="empty-state">
         <p>No matches for “${escapeHtml(query.trim())}”.</p>
+      </div>
+    `;
+  }
+  if (shelf) {
+    return `
+      <div class="empty-state">
+        <p>No books on “${escapeHtml(shelf.name)}” yet.</p>
+        <p class="empty-hint">Open the ··· menu on any book in All books and choose <strong>Shelves…</strong> to add it here.</p>
+      </div>
+    `;
+  }
+  if (kind === 'finished-only') {
+    return `
+      <div class="empty-state">
+        <p>No unfinished books.</p>
+        <p class="empty-hint">Finished books are under <strong>Finished</strong>.</p>
       </div>
     `;
   }

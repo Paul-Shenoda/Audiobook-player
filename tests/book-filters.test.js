@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { filterBooks, searchBooks, sortBooks, pickContinueBook, bookStatus } from '../js/utils/book-filters.js';
+import { filterBooks, filterByShelf, emptyKind, searchBooks, sortBooks, pickContinueBook, bookStatus } from '../js/utils/book-filters.js';
 
 const books = [
   { id: '1', type: 'mp3', title: 'Dune', author: 'Frank Herbert' },
@@ -82,5 +82,28 @@ describe('bookStatus', () => {
     expect(bookStatus({ progress: { percent: 42 } })).toEqual({ kind: 'progress', percent: 42, label: '42%' });
     expect(bookStatus({})).toEqual({ kind: 'new', percent: 0, label: 'Not started' });
     expect(bookStatus({ progress: { percent: 0, seconds: 30 } }).kind).toBe('progress');
+  });
+});
+
+describe('filterByShelf', () => {
+  const shelved = [
+    { id: '1', shelves: ['a', 'b'] },
+    { id: '2', shelves: ['b'], finishedAt: 5 },
+    { id: '3' },
+  ];
+
+  it('keeps books on the shelf, finished ones included', () => {
+    expect(filterByShelf(shelved, 'b').map((b) => b.id)).toEqual(['1', '2']);
+    expect(filterByShelf(shelved, 'a').map((b) => b.id)).toEqual(['1']);
+    expect(filterByShelf(shelved, 'zzz')).toEqual([]);
+  });
+});
+
+describe('emptyKind', () => {
+  it('says only-finished when All is empty but finished books exist', () => {
+    expect(emptyKind(books, 'all')).toBe('none');
+    expect(emptyKind([{ id: 'x', finishedAt: 1 }], 'all')).toBe('finished-only');
+    expect(emptyKind([{ id: 'x', finishedAt: 1 }], 'epub')).toBe('none');
+    expect(emptyKind([], 'all')).toBe('none');
   });
 });

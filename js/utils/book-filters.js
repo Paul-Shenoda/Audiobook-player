@@ -17,6 +17,29 @@ export function filterBooks(books, filter) {
 }
 
 /**
+ * Books on one shelf. A shelf shows its finished books too.
+ * @param {Book[]} books
+ * @param {string} shelfId
+ */
+export function filterByShelf(books, shelfId) {
+  return books.filter((b) => b.shelves?.includes(shelfId));
+}
+
+/**
+ * Why a filter came up empty: 'finished-only' when "All" has nothing left to
+ * listen to but finished books exist (they live under Finished), else 'none'.
+ * @param {Book[]} books
+ * @param {'all'|'epub'|'mp3'|'finished'} filter
+ * @returns {'finished-only'|'none'}
+ */
+export function emptyKind(books, filter) {
+  if (filter === 'all' && filterBooks(books, 'all').length === 0 && books.some((b) => b.finishedAt)) {
+    return 'finished-only';
+  }
+  return 'none';
+}
+
+/**
  * @param {Book[]} books
  * @param {string} query
  */

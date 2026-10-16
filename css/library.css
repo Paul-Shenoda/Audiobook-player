@@ -814,3 +814,411 @@
         --bottom-space: 24px;
     }
 }
+
+/* ---- Shelves (tags: a book can be on more than one) ---- */
+
+:root {
+    --bottom-nav-h: 56px;
+}
+
+/* Which pane shows on phones: the Shelves grid, or the books list. */
+.library-view[data-mode="shelves"] .books-pane {
+    display: none;
+}
+
+.library-view:not([data-mode="shelves"]) .shelves-pane {
+    display: none;
+}
+
+.library-title--shelf {
+    flex: 1;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.shelf-back {
+    margin-left: -4px;
+}
+
+.shelf-menu {
+    position: relative;
+    top: auto;
+    right: auto;
+    flex-shrink: 0;
+}
+
+.shelf-menu .book-menu-btn {
+    color: var(--ink);
+}
+
+.shelf-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-3);
+}
+
+.shelf-card {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    min-width: 0;
+    padding: 14px;
+    border-radius: var(--r-16);
+    background: var(--surface);
+    color: var(--ink);
+    text-align: left;
+}
+
+.shelf-card:hover {
+    background: var(--surface-2);
+}
+
+.shelf-card-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.shelf-card-name {
+    font-weight: 700;
+    font-size: 1rem;
+    overflow-wrap: anywhere;
+}
+
+.shelf-card-count {
+    font-size: 0.8125rem;
+    color: var(--muted);
+}
+
+.shelf-card--new {
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+    min-height: 160px;
+    background: none;
+    border: 1px dashed var(--rule);
+    font-weight: 700;
+    font-size: 0.9375rem;
+}
+
+.shelf-card--new:hover {
+    background: var(--surface);
+}
+
+.shelves-help {
+    margin-top: var(--space-3);
+    font-size: 0.8125rem;
+    line-height: 1.45;
+    color: var(--muted);
+}
+
+/* Coloured book spines. Each --cN is set inline from the book's cover colour. */
+.spines {
+    display: flex;
+    align-items: flex-end;
+    gap: 4px;
+    height: 72px;
+}
+
+.spines i {
+    display: block;
+    border-radius: 3px;
+    background: var(--rule);
+}
+
+.spines i:nth-child(1) { width: 22px; height: 72px; background: var(--c1, var(--rule)); }
+.spines i:nth-child(2) { width: 16px; height: 60px; background: var(--c2, var(--track)); }
+.spines i:nth-child(3) { width: 24px; height: 66px; background: var(--c3, var(--surface-2)); }
+.spines i:nth-child(4) { width: 14px; height: 56px; background: var(--c4, var(--rule)); }
+
+.spines--sm {
+    gap: 2px;
+    height: 28px;
+}
+
+.spines--sm i:nth-child(1) { width: 7px; height: 28px; }
+.spines--sm i:nth-child(2) { width: 6px; height: 23px; }
+.spines--sm i:nth-child(3) { width: 8px; height: 26px; }
+
+/* Sidebar shelves list (shown from 1024px) */
+.sidebar-shelves {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+}
+
+.sidebar-shelves-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 var(--space-1) 0 var(--space-3);
+}
+
+.sidebar-shelves-head h2 {
+    font-family: var(--font-body);
+    font-size: 0.9375rem;
+    font-weight: 700;
+    color: var(--muted);
+}
+
+.sidebar-shelves-add {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--ink-2);
+}
+
+.sidebar-shelves-add:hover {
+    background: var(--surface-2);
+}
+
+.sidebar-shelves-empty {
+    padding: 0 var(--space-3);
+    font-size: 0.8125rem;
+    color: var(--muted);
+}
+
+.sidebar-shelf-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.sidebar-shelf {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    width: 100%;
+    min-height: 52px;
+    padding: 0 var(--space-3);
+    border-radius: 10px;
+    color: var(--ink);
+    text-align: left;
+}
+
+.sidebar-shelf:hover,
+.sidebar-shelf--current {
+    background: var(--surface-2);
+}
+
+.sidebar-shelf--current .sidebar-shelf-name {
+    color: var(--accent);
+}
+
+.sidebar-shelf-text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.sidebar-shelf-name {
+    font-weight: 700;
+    font-size: 0.9375rem;
+    overflow-wrap: anywhere;
+}
+
+.sidebar-shelf-count {
+    font-size: 0.8125rem;
+    color: var(--muted);
+}
+
+/* Bottom navigation (phones) */
+.bottom-nav {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 800;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    min-height: var(--bottom-nav-h);
+    padding: 0 var(--space-3) env(safe-area-inset-bottom);
+    background: var(--bg);
+    border-top: 1px solid var(--surface-2);
+}
+
+.bottom-nav button {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    min-height: 44px;
+    font-size: 0.6875rem;
+    font-weight: 700;
+    color: var(--muted);
+}
+
+.bottom-nav button[aria-current="page"] {
+    color: var(--accent);
+}
+
+/* The floating mini player sits above the bottom nav; nothing hides behind either. */
+@media (max-width: 1023.98px) {
+    body:has(.bottom-nav) .mini-player-bar {
+        bottom: calc(var(--bottom-nav-h) + env(safe-area-inset-bottom) + var(--space-2));
+    }
+
+    #app:has(.bottom-nav) {
+        padding-bottom: calc(var(--bottom-nav-h) + 24px + env(safe-area-inset-bottom));
+    }
+
+    #app:has(.bottom-nav):has(+ .mini-player-bar--visible) {
+        padding-bottom: calc(var(--bottom-nav-h) + 88px + env(safe-area-inset-bottom));
+    }
+}
+
+/* Shelf sheets */
+.shelf-sheet-book {
+    padding: 0 var(--space-5);
+    color: var(--muted);
+    font-size: 0.9375rem;
+    overflow-wrap: anywhere;
+}
+
+.shelf-sheet-body {
+    padding: var(--space-2) var(--space-3);
+    overflow-y: auto;
+    min-height: 0;
+}
+
+.shelf-sheet-empty {
+    padding: var(--space-3);
+    color: var(--muted);
+}
+
+.shelf-check {
+    position: relative;
+    display: flex;
+    align-items: center;
+    min-height: 48px;
+}
+
+.shelf-check input {
+    position: absolute;
+    left: var(--space-3);
+    width: 22px;
+    height: 22px;
+    margin: 0;
+    accent-color: var(--accent);
+}
+
+.shelf-check label {
+    flex: 1;
+    min-height: 48px;
+    display: flex;
+    align-items: center;
+    padding: 0 var(--space-3) 0 calc(var(--space-3) + 22px + var(--space-3));
+    border-radius: 10px;
+    font-weight: 700;
+    cursor: pointer;
+    overflow-wrap: anywhere;
+}
+
+.shelf-check label:hover {
+    background: var(--surface-2);
+}
+
+.shelf-check input:focus-visible + label {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+.shelf-new,
+.shelf-name-form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    padding: var(--space-3) var(--space-5) 0;
+}
+
+.shelf-new-label {
+    font-size: 0.875rem;
+    color: var(--muted);
+}
+
+.shelf-new-row {
+    display: flex;
+    gap: var(--space-2);
+}
+
+.shelf-input {
+    flex: 1;
+    min-width: 0;
+    min-height: 44px;
+    padding: 0 var(--space-3);
+    font: inherit;
+    color: var(--ink);
+    background: var(--bg);
+    border: 1px solid var(--rule);
+    border-radius: var(--r-12);
+}
+
+.shelf-new-btn {
+    min-height: 44px;
+}
+
+.shelf-error {
+    min-height: 1.2em;
+    font-size: 0.875rem;
+    color: var(--danger);
+}
+
+.shelf-done {
+    min-height: 48px;
+    margin: var(--space-2) var(--space-5) var(--space-4);
+}
+
+.shelf-name-form .shelf-done {
+    margin: var(--space-2) 0 var(--space-4);
+}
+
+@media (min-width: 1024px) {
+    .bottom-nav,
+    .shelves-pane,
+    .shelf-back {
+        display: none;
+    }
+
+    /* Always show the books pane on desktop, even if the phone tab was Shelves */
+    .library-view[data-mode="shelves"] .books-pane {
+        display: block;
+    }
+
+    .library-title--shelf {
+        flex: 0 1 auto;
+    }
+
+    .shelf-menu {
+        margin-left: var(--space-2);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .shelf-card,
+    .sidebar-shelf {
+        transition: none;
+    }
+}
+
+/* Inside a shelf on phones: the shelf name gets the room; extra header buttons
+   (search, settings, combine) stay on the main Library view. */
+@media (max-width: 1023px) {
+    .library-header--shelf .library-title--shelf {
+        font-size: 1.75rem;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        overflow-wrap: normal;
+    }
+
+    .library-header--shelf #search-toggle,
+    .library-header--shelf .header-extra {
+        display: none;
+    }
+}
